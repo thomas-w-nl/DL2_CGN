@@ -8,6 +8,8 @@ import pathlib
 from os.path import join
 from datetime import datetime
 import argparse
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tqdm import tqdm, trange
@@ -199,6 +201,13 @@ def main(args):
                 x_gt, mask, premask, foreground, background, bg_mask = cgn(ys=ys)
                 x_gen = mask * foreground + (1 - mask) * background
 
+                x_gen_np = x_gen.cpu().squeeze(0).permute(1,2,0).numpy().clip(0,1)
+                x_gt_np = x_gt.cpu().squeeze(0).permute(1,2,0).numpy().clip(0,1)
+
+                fig, axs = plt.subplots(1, 2)
+                axs[0].imshow(x_gen_np)
+                axs[1].imshow(x_gt_np)
+                plt.show()
                 # save image
                 # to save other outputs, simply add a line in the same format, e.g.:
                 # save_image(premask, join(ims_path, im_name + '_premask.jpg'))
