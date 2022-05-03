@@ -23,7 +23,7 @@ import repackage
 
 repackage.up()
 
-from imagenet.models import CGN
+from imagenet.models import CGN, U2NET
 
 
 def save_image(im, path):
@@ -184,6 +184,12 @@ def main(args):
     cgn.load_state_dict(weights)
     cgn.eval().to(device)
 
+    # Setup refinement network
+    u2net = U2NET(6, 3, outconv_ch=18)
+    u2net.to(device)
+
+    criterion = nn.CrossEntropyLoss()
+
     # path setup
     time_str = datetime.now().strftime("%Y_%m_%d_%H_")
     trunc_str = f"{args.run_name}_trunc_{args.truncation}"
@@ -197,6 +203,8 @@ def main(args):
     csv_path = join(data_path, 'labels.csv')
     df.to_csv(csv_path)
 
+    loss_total = []
+
     # generate data
     with torch.no_grad():
         for i in trange(args.n_data):
@@ -206,32 +214,22 @@ def main(args):
             y_vec = torch.randint(0, 1000, (args.batch_sz,)).to(torch.int64)
             y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
 
-            dev = cgn.get_device()
             u_vec = cgn.get_noise_vec()
-            inp = (u_vec.to(dev), y_vec.to(dev), cgn.truncation)
+            inp = (u_vec.to(device), y_vec.to(device), cgn.truncation)
 
             x_gt, mask, premask, foreground, background, bg_mask = cgn(inp=inp)
             x_gen = mask * foreground + (1 - mask) * background
 
-            # x_gen_np = x_gen.cpu().squeeze(0).permute(1, 2, 0).numpy().clip(0, 1)
-            # x_gt_np = x_gt.cpu().squeeze(0).permute(1, 2, 0).numpy().clip(0, 1)
-            print("x_gen", x_gen.shape)
+            input = torch.hstack((mask * foreground, background))
 
-            x0 = x_gen.cpu()[0].permute(1, 2, 0).numpy().clip(0, 1)
-            x1 = x_gen.cpu()[1].permute(1, 2, 0).numpy().clip(0, 1)
+            x_gen_ref = u2net(input)
 
-            fig, axs = plt.subplots(1, 2)
-            axs[0].imshow(x0)
-            axs[1].imshow(x1)
-            plt.show()
-            # save image
-            # to save other outputs, simply add a line in the same format, e.g.:
-            # save_image(premask, join(ims_path, im_name + '_premask.jpg'))
-            # save_image(x_gen, join(ims_path, im_name + '_x_gen.jpg'))
 
-            # # save labels
-            # df = pd.DataFrame(columns=[im_name] + ys)
-            # df.to_csv(csv_path, mode='a')
+            loss = criterion(x_gen_ref, x_gt)
+
+            loss_total.append(loss.cpu().item())
+
+    print("avg loss:", np.mean(loss_total))
 
 
 if __name__ == '__main__':
