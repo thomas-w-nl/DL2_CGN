@@ -21,8 +21,6 @@ import torchvision
 from torchvision.utils import make_grid
 import repackage
 
-
-
 repackage.up()
 
 from imagenet.models import CGN, U2NET
@@ -214,7 +212,6 @@ def main(args):
 
     # generate data
     for i in trange(args.n_data):
-
         im_name = f'{args.run_name}_{i:07}'
 
         # sample random classes for image. Background, foreground and mask are all the same class.
@@ -250,7 +247,6 @@ def main(args):
         loss = criterion(x_gen_ref, x_gt)
         loss.backward()
         optimizer.step()
-
 
         loss_total.append(loss.cpu().item())
 
