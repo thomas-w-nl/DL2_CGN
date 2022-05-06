@@ -325,7 +325,7 @@ class U2NET(nn.Module):
             model.load_state_dict(state_dict)
         return model
 
-    def __init__(self,in_ch=3,out_ch=1):
+    def __init__(self,in_ch=3,out_ch=1, outconv_ch=6):
         super(U2NET, self).__init__()
 
         self.stage1 = RSU7(in_ch,32,64)
@@ -359,7 +359,7 @@ class U2NET(nn.Module):
         self.side5 = nn.Conv2d(512,out_ch,3,padding=1)
         self.side6 = nn.Conv2d(512,out_ch,3,padding=1)
 
-        self.outconv = nn.Conv2d(6,out_ch,1)
+        self.outconv = nn.Conv2d(outconv_ch,out_ch,1)
 
     def forward(self, x):
 
