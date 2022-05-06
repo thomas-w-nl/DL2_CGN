@@ -2,6 +2,9 @@ import torch
 import torch.nn.functional as F
 import argparse
 
+import repackage
+repackage.up()
+
 from imagenet.models import CGN
 
 
@@ -14,7 +17,6 @@ def generate_images(args):
         pretrained=False,
     )
 
-    cgn = cgn.eval().to(device)
 
     weights = torch.load(args.weights_path, map_location="cpu")
     weights = {k.replace("module.", ""): v for k, v in weights.items()}
@@ -22,33 +24,33 @@ def generate_images(args):
     cgn.eval().to(device)
 
     data_dict = {"bg": None, "fg": None, "m": None, "gt": None, "labels": None}
+    with torch.no_grad():
+        for i in range(args.n_data):
 
-    for i in range(args.n_data):
+            y_vec = torch.randint(0, 1000, (1,)).to(torch.int64)
+            y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
 
-        y_vec = torch.randint(0, 1000, (1,)).to(torch.int64)
-        y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
+            dev = cgn.get_device()
+            u_vec = cgn.get_noise_vec()
 
-        dev = cgn.get_device()
-        u_vec = cgn.get_noise_vec()
+            inp = (u_vec.to(dev), y_vec.to(dev), cgn.truncation)
+            print(cgn.truncation)
+            x_gt, mask, _, foreground, background, _ = cgn(inp=inp)
 
-        inp = (u_vec.to(dev), y_vec.to(dev), cgn.truncation)
-        print(cgn.truncation)
-        x_gt, mask, _, foreground, background, _ = cgn(inp=inp)
+            if i:
+                data_dict["bg"] = torch.cat((background.cpu(), data_dict["bg"]), dim=0)
+                data_dict["fg"] = torch.cat((foreground.cpu(), data_dict["fg"]), dim=0)
+                data_dict["m"] = torch.cat((mask.cpu(), data_dict["m"]), dim=0)
+                data_dict["gt"] = torch.cat((x_gt.cpu(), data_dict["gt"]), dim=0)
+                data_dict["labels"] = torch.cat((y_vec, data_dict["labels"]), dim=0)
+            else:
+                data_dict["labels"] = y_vec.cpu()
+                data_dict["bg"] = background.cpu()
+                data_dict["fg"] = foreground.cpu()
+                data_dict["m"] = mask.cpu()
+                data_dict["gt"] = x_gt.cpu()
 
-        if i:
-            data_dict["bg"] = torch.cat((background.cpu(), data_dict["bg"]), dim=0)
-            data_dict["fg"] = torch.cat((foreground.cpu(), data_dict["fg"]), dim=0)
-            data_dict["m"] = torch.cat((mask.cpu(), data_dict["m"]), dim=0)
-            data_dict["gt"] = torch.cat((x_gt.cpu(), data_dict["gt"]), dim=0)
-            data_dict["labels"] = torch.cat((y_vec, data_dict["labels"]), dim=0)
-        else:
-            data_dict["labels"] = y_vec.cpu()
-            data_dict["bg"] = background.cpu()
-            data_dict["fg"] = foreground.cpu()
-            data_dict["m"] = mask.cpu()
-            data_dict["gt"] = x_gt.cpu()
-
-    print(data_dict["gt"].shape)
+        print(data_dict["gt"].shape)
 
     return
 
