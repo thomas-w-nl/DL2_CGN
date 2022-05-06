@@ -21,9 +21,12 @@ import torchvision
 from torchvision.utils import make_grid
 import repackage
 
+
+
 repackage.up()
 
 from imagenet.models import CGN, U2NET
+from utils import toggle_grad
 
 
 def save_image(im, path):
@@ -187,6 +190,10 @@ def main(args):
     # Setup refinement network
     u2net = U2NET(6, 3, outconv_ch=18)
     u2net.to(device)
+    toggle_grad(u2net, True)
+
+    # Setup training utilities
+    optimizer = torch.optim.Adam(u2net.parameters(), lr=1e-3)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -206,38 +213,56 @@ def main(args):
     loss_total = []
 
     # generate data
-    with torch.no_grad():
-        for i in trange(args.n_data):
-            im_name = f'{args.run_name}_{i:07}'
+    for i in trange(args.n_data):
 
-            # sample random classes for image. Background, foreground and mask are all the same class.
-            y_vec = torch.randint(0, 1000, (args.batch_sz,)).to(torch.int64)
-            y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
+        im_name = f'{args.run_name}_{i:07}'
 
-            u_vec = cgn.get_noise_vec()
-            inp = (u_vec.to(device), y_vec.to(device), cgn.truncation)
+        # sample random classes for image. Background, foreground and mask are all the same class.
+        y_vec = torch.randint(0, 1000, (args.batch_sz,)).to(torch.int64)
+        y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
 
-            x_gt, mask, premask, foreground, background, bg_mask = cgn(inp=inp)
-            x_gen = mask * foreground + (1 - mask) * background
+        u_vec = cgn.get_noise_vec()
+        inp = (u_vec.to(device), y_vec.to(device), cgn.truncation)
 
-            input = torch.hstack((mask * foreground, background))
+        x_gt, mask, premask, foreground, background, bg_mask = cgn(inp=inp)
+        x_gen = mask * foreground + (1 - mask) * background
 
-            x_gen_ref = u2net(input)
+        input = torch.hstack((mask * foreground, background))
+
+        input = input.detach()
+        x_gt = x_gt.detach()
+
+        optimizer.zero_grad()
+
+        x_gen_ref = u2net(input)
+
+        ### visualisation
+        # a = x_gen.cpu()[0].permute(1,2,0).numpy().clip(0,1)
+        # b = x_gen_ref.cpu()[0].permute(1,2,0).numpy().clip(0,1)
+        #
+        # fig, axs = plt.subplots(1, 2)
+        # axs[0].imshow(a)
+        # axs[0].set_title("before unet")
+        # axs[1].imshow(b)
+        # axs[1].set_title("after unet")
+        # plt.show()
+
+        loss = criterion(x_gen_ref, x_gt)
+        loss.backward()
+        optimizer.step()
 
 
-            loss = criterion(x_gen_ref, x_gt)
-
-            loss_total.append(loss.cpu().item())
+        loss_total.append(loss.cpu().item())
 
     print("avg loss:", np.mean(loss_total))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, required=True,
-                        choices=['random', 'best_classes', 'fixed_classes'],
-                        help='Choose between random sampling, sampling from the best ' +
-                             'classes or the classes passed to args.classes')
+    # parser.add_argument('--mode', type=str, required=True,
+    #                     choices=['random', 'best_classes', 'fixed_classes'],
+    #                     help='Choose between random sampling, sampling from the best ' +
+    #                          'classes or the classes passed to args.classes')
     parser.add_argument('--n_data', type=int, required=True,
                         help='How many datapoints to sample')
     parser.add_argument('--run_name', type=str, required=True,
@@ -264,7 +289,6 @@ if __name__ == '__main__':
                         help='Sample single images instead of sheets')
 
     args = parser.parse_args()
-    print(args)
-    if args.mode != 'fixed_classes' and [0, 0, 0] != args.classes:
-        warnings.warn(f"You supply classes, but they won't be used for mode = {args.mode}")
+    # if args.mode != 'fixed_classes' and [0, 0, 0] != args.classes:
+    #     warnings.warn(f"You supply classes, but they won't be used for mode = {args.mode}")
     main(args)
