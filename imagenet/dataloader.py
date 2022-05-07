@@ -3,7 +3,7 @@ import math
 import os
 from os.path import join
 from math import ceil
-from glob import glob
+import glob
 from pathlib import PurePosixPath
 
 from PIL import Image
@@ -300,11 +300,11 @@ class RefinementDataset(Dataset) :
                                              std=[0.229, 0.224, 0.225])
             self.transform = transforms.Compose([transforms.ToTensor(), normalize])
 
-
-        self.gt_paths = sorted(glob.glob(path + "gt.png"))
-        self.mask_paths = sorted(glob.glob(path + "mask.png"))
-        self.fg_paths = sorted(glob.glob(path + "fg.png"))
-        self.bg_paths = sorted(glob.glob(path + "bg.png"))
+        self.mask_transform = transforms.ToTensor()
+        self.gt_paths = sorted(glob.glob(path + "*gt.png"))
+        self.mask_paths = sorted(glob.glob(path + "*mask.png"))
+        self.fg_paths = sorted(glob.glob(path + "*fg.png"))
+        self.bg_paths = sorted(glob.glob(path + "*bg.png"))
 
 
     def __getitem__(self, idx):
@@ -314,7 +314,7 @@ class RefinementDataset(Dataset) :
         bg = Image.open(self.bg_paths[idx])
         return {
             'gt': self.transform(gt),
-            'mask': self.transform(mask),
+            'mask': self.mask_transform(mask),
             'fg': self.transform(fg),
             'bg': self.transform(bg),
         }
