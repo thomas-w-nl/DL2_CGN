@@ -288,6 +288,40 @@ class Imagenet9(object):
                                  shuffle=False, num_workers=workers, pin_memory=True)
         return test_loader
 
+
+class RefinementDataset(Dataset) :
+
+    def __init__(self, path, transform=None):
+        super().__init__()
+
+        self.transform = transform
+        if transform is None:
+            normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                             std=[0.229, 0.224, 0.225])
+            self.transform = transforms.Compose([transforms.ToTensor(), normalize])
+
+
+        self.gt_paths = sorted(glob.glob(path + "gt.png"))
+        self.mask_paths = sorted(glob.glob(path + "mask.png"))
+        self.fg_paths = sorted(glob.glob(path + "fg.png"))
+        self.bg_paths = sorted(glob.glob(path + "bg.png"))
+
+
+    def __getitem__(self, idx):
+        gt = Image.open(self.gt_paths[idx])
+        mask = Image.open(self.mask_paths[idx])
+        fg = Image.open(self.fg_paths[idx])
+        bg = Image.open(self.bg_paths[idx])
+        return {
+            'gt': self.transform(gt),
+            'mask': self.transform(mask),
+            'fg': self.transform(fg),
+            'bg': self.transform(bg),
+        }
+
+    def __len__(self):
+        return len(self.gt_paths)
+
 # dataloaders
 
 def get_imagenet_dls(distributed, batch_size, workers):
