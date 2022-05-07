@@ -37,6 +37,7 @@ def generate_images(args):
     with torch.no_grad():
         for i in tqdm.trange(args.n_data):
 
+            # sample random classes for image. Background, foreground and mask are all the same class.
             y_vec = torch.randint(0, 1000, (1,)).to(torch.int64)
             y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
 
