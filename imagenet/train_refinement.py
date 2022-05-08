@@ -12,6 +12,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import wandb
 from tqdm import tqdm, trange
 
 import torch
@@ -21,8 +22,10 @@ import torchvision
 from torchvision.utils import make_grid
 import repackage
 
+
 repackage.up()
 
+from imagenet.dataloader import RefinementDataset
 from imagenet.models import CGN, U2NET
 from utils import toggle_grad
 
@@ -30,110 +33,6 @@ from utils import toggle_grad
 def save_image(im, path):
     torchvision.utils.save_image(im.detach().cpu(), path, normalize=True)
 
-
-def interp(x0, x1, num_midpoints):
-    '''
-    Interp function; expects x0 and x1 to be of shape (shape0, 1, rest_of_shape..)
-    '''
-    lerp = torch.linspace(0, 1.0, num_midpoints + 2, device=x0.device).to(x0.dtype)
-    return ((x0 * (1 - lerp.view(1, -1, 1))) + (x1 * lerp.view(1, -1, 1)))
-
-
-def interp_sheet(cgn, mode, ys, y_interp, num_midpoints, save_path,
-                 save_single=False, save_noise=True):
-    dev = cgn.get_device()
-
-    if y_interp == -1:
-        y_interp = np.random.randint(0, 1000)
-
-    # Prepare zs
-    dim_u = cgn.dim_u
-    if save_noise:
-        print('Sampling new noise and saving.')
-        us = cgn.get_noise_vec(sz=1)
-        torch.save(us, 'imagenet/data/u_fixed.pth')
-    else:
-        print('Loading noise vector from disk.')
-        us = torch.load('imagenet/data/u_fixed.pth')
-
-    us_stack = us.repeat(1, num_midpoints + 2, 1).view(-1, dim_u).to(dev)
-
-    def stack_vec(y_start):
-        y_start_vec = cgn.get_class_vec(y=y_start, sz=1)
-        return y_start_vec.repeat(num_midpoints + 2, 1)
-
-    def interp_vec(y_start, y_end):
-        y_start_vec = cgn.get_class_vec(y=y_start, sz=1)
-        y_end_vec = cgn.get_class_vec(y=y_end, sz=1)
-        return interp(y_start_vec.view(1, 1, -1), y_end_vec.view(1, 1, -1),
-                      num_midpoints).view((num_midpoints + 2), -1)
-
-    # get class vectors
-    if mode == 'shape':
-        y_vec_0 = interp_vec(ys[0], y_interp)
-        y_vec_1 = stack_vec(ys[1])
-        y_vec_2 = stack_vec(ys[2])
-
-    elif mode == 'text':
-        y_vec_0 = stack_vec(ys[0])
-        y_vec_1 = interp_vec(ys[1], y_interp)
-        y_vec_2 = stack_vec(ys[2])
-
-    elif mode == 'bg':
-        y_vec_0 = stack_vec(ys[0])
-        y_vec_1 = stack_vec(ys[1])
-        y_vec_2 = interp_vec(ys[2], y_interp)
-
-    elif mode == 'all':
-        y_vec_0 = interp_vec(ys[0], y_interp)
-        y_vec_1 = interp_vec(ys[1], y_interp)
-        y_vec_2 = interp_vec(ys[2], y_interp)
-
-    y_vec_0, y_vec_1, y_vec_2 = y_vec_0.to(dev), y_vec_1.to(dev), y_vec_2.to(dev)
-    premask, mask, foreground, background = [], [], [], []
-
-    # loop over each datapoint, otherwise we need to much GPU mem when using many midpoints
-    with torch.no_grad():
-        for i in trange(len(y_vec_0)):
-            # partially copying the forward pass of the cgn class
-            pm = cgn.f_shape(us_stack[i][None], y_vec_0[i][None], cgn.truncation)
-            m = cgn.u2net(pm)
-            m = torch.clamp(m, 0.0001, 0.9999).repeat(1, 3, 1, 1)
-            fg = cgn.f_text(us_stack[i][None], y_vec_1[i][None], cgn.truncation)
-            bg = cgn.f_bg(us_stack[i][None], y_vec_2[i][None], cgn.truncation)
-
-            # build lists
-            premask.append(pm)
-            mask.append(m)
-            foreground.append(fg)
-            background.append(bg)
-
-        # compose
-        premask, mask = torch.cat(premask), torch.cat(mask)
-        foreground, background = torch.cat(foreground), torch.cat(background)
-        x_gen = mask * foreground + (1 - mask) * background
-
-    # get the result of the IM we interpolated over, e.g., only shape
-    if mode == 'shape':
-        out = mask
-    elif mode == 'text':
-        out = foreground
-    elif mode == 'bg':
-        out = background
-    elif mode == 'all':
-        out = x_gen
-
-    # save composite image
-    x_gen_file = f'{save_path}_x_gen_interp.jpg'
-    out_file = f'{save_path}_{mode}_interp.jpg'
-    if not save_single:
-        torchvision.utils.save_image(x_gen, x_gen_file, nrow=num_midpoints + 2, normalize=True)
-        if mode != 'all':
-            torchvision.utils.save_image(out, out_file, nrow=num_midpoints + 2, normalize=True)
-    else:
-        for i in range(len(x_gen)):
-            idx = str(i).zfill(5)
-            save_image(x_gen[i], x_gen_file.replace('.jpg', idx + '.jpg'))
 
 
 # Lists of best or most interesting shape/texture/background classes
@@ -172,18 +71,6 @@ def sample_classes(mode, classes=None):
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Load model
-    cgn = CGN(
-        batch_sz=args.batch_sz,
-        truncation=args.truncation,
-        pretrained=False,
-    )
-    cgn = cgn.eval().to(device)
-
-    weights = torch.load(args.weights_path, map_location='cpu')
-    weights = {k.replace('module.', ''): v for k, v in weights.items()}
-    cgn.load_state_dict(weights)
-    cgn.eval().to(device)
 
     # Setup refinement network
     u2net = U2NET(6, 3, outconv_ch=18)
@@ -191,66 +78,81 @@ def main(args):
     toggle_grad(u2net, True)
 
     # Setup training utilities
-    optimizer = torch.optim.Adam(u2net.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(u2net.parameters(), lr=args.lr)
 
     criterion = nn.CrossEntropyLoss()
 
-    # path setup
-    time_str = datetime.now().strftime("%Y_%m_%d_%H_")
-    trunc_str = f"{args.run_name}_trunc_{args.truncation}"
-    data_path = join('imagenet', 'data', time_str + trunc_str)
-    ims_path = join(data_path, 'ims')
-    pathlib.Path(ims_path).mkdir(parents=True, exist_ok=True)
-    print(f"Saving data to {data_path}")
+    dataset = RefinementDataset("imagenet/data/refinement1/")
 
-    # set up label csv
-    df = pd.DataFrame(columns=['im_name', 'shape_cls', 'texture_cls', 'bg_cls'])
-    csv_path = join(data_path, 'labels.csv')
-    df.to_csv(csv_path)
+    print("Dataset length:", len(dataset))
 
-    loss_total = []
+    trainloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=args.batch_sz,
+        shuffle=True,
+        num_workers=8, pin_memory=True, drop_last=True)
+
+    # logging
+    run = wandb.init(project="dl2-refinement", entity="thomas-w",
+                     config=vars(args),
+                     # group=args.model,
+                     notes=f"{args.notes}", reinit=True)
+
 
     # generate data
-    for i in trange(args.n_data):
-        im_name = f'{args.run_name}_{i:07}'
+    for epoch in trange(args.epochs):
+        loss_total = []
 
-        # sample random classes for image. Background, foreground and mask are all the same class.
-        y_vec = torch.randint(0, 1000, (args.batch_sz,)).to(torch.int64)
-        y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
+        for data in trainloader:
+            x_gt = data["gt"].to(device)
+            mask = data["mask"].to(device)
+            foreground = data["fg"].to(device)
+            background = data["bg"].to(device)
 
-        u_vec = cgn.get_noise_vec()
-        inp = (u_vec.to(device), y_vec.to(device), cgn.truncation)
 
-        x_gt, mask, premask, foreground, background, bg_mask = cgn(inp=inp)
-        x_gen = mask * foreground + (1 - mask) * background
+            # x_gen = mask * foreground + (1 - mask) * background
 
-        input = torch.hstack((mask * foreground, background))
+            input = torch.hstack((mask * foreground, background))
 
-        input = input.detach()
-        x_gt = x_gt.detach()
+            input = input.detach()
+            x_gt = x_gt.detach()
 
-        optimizer.zero_grad()
+            optimizer.zero_grad()
 
-        x_gen_ref = u2net(input)
+            x_gen_ref = u2net(input)
 
-        ### visualisation
-        # a = x_gen.cpu()[0].permute(1,2,0).numpy().clip(0,1)
-        # b = x_gen_ref.cpu()[0].permute(1,2,0).numpy().clip(0,1)
-        #
-        # fig, axs = plt.subplots(1, 2)
-        # axs[0].imshow(a)
-        # axs[0].set_title("before unet")
-        # axs[1].imshow(b)
-        # axs[1].set_title("after unet")
-        # plt.show()
+            ### visualisation
+            # a = x_gen.cpu()[0].permute(1,2,0).numpy().clip(0,1)
+            # b = x_gen_ref.cpu()[0].permute(1,2,0).numpy().clip(0,1)
+            #
+            # fig, axs = plt.subplots(1, 2)
+            # axs[0].imshow(a)
+            # axs[0].set_title("before unet")
+            # axs[1].imshow(b)
+            # axs[1].set_title("after unet")
+            # plt.show()
 
-        loss = criterion(x_gen_ref, x_gt)
-        loss.backward()
-        optimizer.step()
+            loss = criterion(x_gen_ref, x_gt)
+            loss.backward()
+            optimizer.step()
 
-        loss_total.append(loss.cpu().item())
+            loss_total.append(loss.cpu().item())
 
-    print("avg loss:", np.mean(loss_total))
+        # lr = scheduler.get_last_lr()
+        lr = optimizer.param_groups[0]['lr']
+
+        loss = np.mean(loss_total)
+        print("avg loss:", loss)
+        log = {
+            "epoch": epoch,
+            "loss": loss,
+            "lr": lr,
+        }
+        wandb.log(log)
+
+    torch.save(u2net, f"trained_u2net_{datetime.now().strftime('%d-%m-%Y_%H:%M:%S')}.pt")
+
+    run.finish()
 
 
 if __name__ == '__main__':
@@ -259,30 +161,17 @@ if __name__ == '__main__':
     #                     choices=['random', 'best_classes', 'fixed_classes'],
     #                     help='Choose between random sampling, sampling from the best ' +
     #                          'classes or the classes passed to args.classes')
-    parser.add_argument('--n_data', type=int, required=True,
-                        help='How many datapoints to sample')
-    parser.add_argument('--run_name', type=str, required=True,
-                        help='Name the dataset')
-    parser.add_argument('--weights_path', type=str, required=True,
-                        help='Which weights to load for the CGN')
-    parser.add_argument('--batch_sz', type=int, default=1,
-                        help='For generating a dataset, keep this at 1')
+    parser.add_argument('--epochs', type=int, default=30,
+                        help='How many epochs to train for')
+    parser.add_argument('--lr', type=float, default=1e-3,
+                        help='Learning rate')
+    parser.add_argument('--notes', type=str, default="",
+                        help='Notes for wandb')
+    parser.add_argument('--batch_sz', type=int, default=8,
+                        help='Batch size, default 32')
     parser.add_argument('--truncation', type=float, default=1.0,
                         help='Truncation value for the sampling the noise')
-    parser.add_argument('--classes', nargs='+', default=[0, 0, 0],
-                        help='Classes to sample from, use in conjunction with ' +
-                             'args.mode=fixed_classes. Order: [Shape, Foreground, Background]')
-    parser.add_argument('--interp', type=str, default='',
-                        choices=['', 'all', 'shape', 'text', 'bg'],
-                        help='Save interpolation sheet instead of single ims.')
-    parser.add_argument('--interp_cls', type=int, default=-1,
-                        help='Classes to which we interpolate. val=-1 samples a random class.')
-    parser.add_argument('--midpoints', type=int, default=6,
-                        help='How many midpoints for the interpolation')
-    parser.add_argument('--save_noise', default=False, action='store_true',
-                        help='Sample new noise and save to disk for interpolation')
-    parser.add_argument('--save_single', default=False, action='store_true',
-                        help='Sample single images instead of sheets')
+
 
     args = parser.parse_args()
     # if args.mode != 'fixed_classes' and [0, 0, 0] != args.classes:
