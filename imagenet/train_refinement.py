@@ -26,7 +26,7 @@ import repackage
 repackage.up()
 
 from imagenet.dataloader import RefinementDataset
-from imagenet.models import CGN, U2NET
+from imagenet.models import CGN, U2NET, DiceLoss
 from utils import toggle_grad
 
 
@@ -80,7 +80,8 @@ def main(args):
     # Setup training utilities
     optimizer = torch.optim.Adam(u2net.parameters(), lr=args.lr)
 
-    criterion = nn.CrossEntropyLoss()
+    # criterion = nn.CrossEntropyLoss()
+    criterion = DiceLoss()
 
     dataset = RefinementDataset("imagenet/data/refinement1/")
 

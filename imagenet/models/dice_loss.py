@@ -1,6 +1,6 @@
 import torch
 
-def dice_loss(input, target):
+def DiceLoss(input, target):
 
     smoothing = 1
 
