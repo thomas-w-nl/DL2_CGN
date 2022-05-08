@@ -11,6 +11,6 @@ def dice_loss(input, target):
 
     denom = input_flat.sum() + target_flat.sum() + smoothing
 
-    loss = num/denom
+    loss = numerator/denom
 
     return loss
