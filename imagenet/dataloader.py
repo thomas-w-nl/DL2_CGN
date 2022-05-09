@@ -19,6 +19,23 @@ from torchvision.datasets import ImageFolder
 
 # helper functions
 
+class UnNormalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        """
+        Args:
+            tensor (Tensor): Tensor image of size (C, H, W) to be unnormalized.
+        Returns:
+            Tensor: Unnormalized image.
+        """
+        for t, m, s in zip(tensor, self.mean, self.std):
+            t.mul_(s).add_(m)
+            # The normalize code -> t.sub_(m).div_(s)
+        return tensor
+
 class DistributedSampler(Sampler):
 
     def __init__(self, dataset, num_replicas=None, rank=None, shuffle=True, seed=0, drop_last=False):
@@ -294,17 +311,21 @@ class RefinementDataset(Dataset) :
     def __init__(self, path, transform=None):
         super().__init__()
 
+        path = os.path.join(path, '') # ensure trailing slash
+
         self.transform = transform
         if transform is None:
             normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
-            self.transform = transforms.Compose([transforms.ToTensor(), normalize])
+            self.transform = transforms.Compose([transforms.ToTensor(), ]) #normalize])
 
         self.mask_transform = transforms.ToTensor()
         self.gt_paths = sorted(glob.glob(path + "*gt.png"))
         self.mask_paths = sorted(glob.glob(path + "*mask.png"))
         self.fg_paths = sorted(glob.glob(path + "*fg.png"))
         self.bg_paths = sorted(glob.glob(path + "*bg.png"))
+        print(len(self.gt_paths))
+        assert len(self.gt_paths), f"Empty dataset {os.path.abspath(path)}"
 
 
     def __getitem__(self, idx):
