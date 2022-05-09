@@ -2,7 +2,7 @@
 Generate a dataset with the CGN.
 The labels are stored in a csv
 '''
-
+import os
 import warnings
 import pathlib
 from os.path import join
@@ -22,17 +22,15 @@ import torchvision
 from torchvision.utils import make_grid
 import repackage
 
-
 repackage.up()
 
 from imagenet.dataloader import RefinementDataset
-from imagenet.models import CGN, U2NET, DiceLoss
+from imagenet.models import CGN, U2NET, DiceLoss, RefineNetShallow
 from utils import toggle_grad
 
 
 def save_image(im, path):
     torchvision.utils.save_image(im.detach().cpu(), path, normalize=True)
-
 
 
 # Lists of best or most interesting shape/texture/background classes
@@ -68,22 +66,56 @@ def sample_classes(mode, classes=None):
         assert ValueError("Unknown sample mode {mode}")
 
 
+def show_images(x_gt, x_gen, x_gen_refined):
+    a = x_gt
+    b = x_gen
+    c = x_gen_refined
+
+    # a = unnormalize(a)
+    # b = unnormalize(b)
+    # c = unnormalize(c)
+
+    a = a.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0,1)
+    b = b.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0,1)
+    c = c.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0,1)
+
+    fig, axs = plt.subplots(2, 2)
+    for x in axs.ravel():
+        x.axis('off')
+
+    axs[0, 0].imshow(a)
+    axs[0, 0].set_title("x_gt")
+
+    axs[1, 0].imshow(b)
+    axs[1, 0].set_title("x_gen")
+
+    axs[1, 1].imshow(c)
+    axs[1, 1].set_title("x_gen_refined")
+    plt.show()
+
+
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
     # Setup refinement network
-    u2net = U2NET(6, 3, outconv_ch=18)
-    u2net.to(device)
-    toggle_grad(u2net, True)
+
+    # model = U2NET(6, 3, outconv_ch=18)
+    model = RefineNetShallow()
+
+    model.to(device)
+    toggle_grad(model, True)
 
     # Setup training utilities
-    optimizer = torch.optim.Adam(u2net.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    # criterion = nn.CrossEntropyLoss()
-    criterion = DiceLoss()
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[15, 25], gamma=0.1)
 
-    dataset = RefinementDataset("imagenet/data/refinement1/")
+    if args.dice_loss:
+        criterion = DiceLoss
+    else:
+        criterion = nn.CrossEntropyLoss()
+
+    dataset = RefinementDataset(args.dataset)
 
     print("Dataset length:", len(dataset))
 
@@ -99,7 +131,6 @@ def main(args):
                      # group=args.model,
                      notes=f"{args.notes}", reinit=True)
 
-
     # generate data
     for epoch in trange(args.epochs):
         loss_total = []
@@ -110,34 +141,26 @@ def main(args):
             foreground = data["fg"].to(device)
             background = data["bg"].to(device)
 
+            x_gen = mask * foreground + (1 - mask) * background
 
-            # x_gen = mask * foreground + (1 - mask) * background
-
-            input = torch.hstack((mask * foreground, background))
+            input = torch.hstack((mask * foreground, (1 - mask) * background))
 
             input = input.detach()
             x_gt = x_gt.detach()
 
             optimizer.zero_grad()
 
-            x_gen_ref = u2net(input)
-
-            ### visualisation
-            # a = x_gen.cpu()[0].permute(1,2,0).numpy().clip(0,1)
-            # b = x_gen_ref.cpu()[0].permute(1,2,0).numpy().clip(0,1)
-            #
-            # fig, axs = plt.subplots(1, 2)
-            # axs[0].imshow(a)
-            # axs[0].set_title("before unet")
-            # axs[1].imshow(b)
-            # axs[1].set_title("after unet")
-            # plt.show()
+            x_gen_ref = model(input)
 
             loss = criterion(x_gen_ref, x_gt)
             loss.backward()
             optimizer.step()
+            scheduler.step()
 
             loss_total.append(loss.cpu().item())
+
+        if os.getlogin() == "thomas":
+            show_images(x_gt, x_gen, x_gen_ref)
 
         # lr = scheduler.get_last_lr()
         lr = optimizer.param_groups[0]['lr']
@@ -151,7 +174,10 @@ def main(args):
         }
         wandb.log(log)
 
-    torch.save(u2net, f"trained_u2net_{datetime.now().strftime('%d-%m-%Y_%H:%M:%S')}.pt")
+    filename = f"trained_{datetime.now().strftime('%d-%m-%Y_%H.%M.%S')}.pt"
+    torch.save(model, "trained_last.pt")
+    torch.save(model, filename)
+    print("Saved weights as", filename)
 
     run.finish()
 
@@ -168,11 +194,14 @@ if __name__ == '__main__':
                         help='Learning rate')
     parser.add_argument('--notes', type=str, default="",
                         help='Notes for wandb')
+    parser.add_argument('--dataset', type=str, default="imagenet/data/refinement1/",
+                        help='Path to the dataset')
     parser.add_argument('--batch_sz', type=int, default=8,
                         help='Batch size, default 32')
     parser.add_argument('--truncation', type=float, default=1.0,
                         help='Truncation value for the sampling the noise')
-
+    parser.add_argument('--dice_loss', action='store_true',
+                        help='use dice loss in stead of crossentorpy')
 
     args = parser.parse_args()
     # if args.mode != 'fixed_classes' and [0, 0, 0] != args.classes:
