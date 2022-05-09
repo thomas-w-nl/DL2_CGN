@@ -19,12 +19,15 @@ from torch import nn
 import torchvision
 from torchvision.utils import make_grid
 import repackage
+
 repackage.up()
 
 from imagenet.models import CGN
 
+
 def save_image(im, path):
     torchvision.utils.save_image(im.detach().cpu(), path, normalize=True)
+
 
 def interp(x0, x1, num_midpoints):
     '''
@@ -32,6 +35,7 @@ def interp(x0, x1, num_midpoints):
     '''
     lerp = torch.linspace(0, 1.0, num_midpoints + 2, device=x0.device).to(x0.dtype)
     return ((x0 * (1 - lerp.view(1, -1, 1))) + (x1 * lerp.view(1, -1, 1)))
+
 
 def interp_sheet(cgn, mode, ys, y_interp, num_midpoints, save_path,
                  save_single=False, save_noise=True):
@@ -108,10 +112,14 @@ def interp_sheet(cgn, mode, ys, y_interp, num_midpoints, save_path,
         x_gen = mask * foreground + (1 - mask) * background
 
     # get the result of the IM we interpolated over, e.g., only shape
-    if mode == 'shape': out = mask
-    elif mode == 'text': out = foreground
-    elif mode == 'bg': out = background
-    elif mode == 'all': out = x_gen
+    if mode == 'shape':
+        out = mask
+    elif mode == 'text':
+        out = foreground
+    elif mode == 'bg':
+        out = background
+    elif mode == 'all':
+        out = x_gen
 
     # save composite image
     x_gen_file = f'{save_path}_x_gen_interp.jpg'
@@ -124,6 +132,7 @@ def interp_sheet(cgn, mode, ys, y_interp, num_midpoints, save_path,
         for i in range(len(x_gen)):
             idx = str(i).zfill(5)
             save_image(x_gen[i], x_gen_file.replace('.jpg', idx + '.jpg'))
+
 
 # Lists of best or most interesting shape/texture/background classes
 # (Yes, I know all imagenet classes very well by now)
@@ -141,6 +150,7 @@ BACKGROUNDS = [7, 9, 20, 30, 35, 46, 50, 65, 72, 93, 96, 97, 119, 133, 147, 337,
                383, 429, 460, 693, 801, 888, 947, 949, 952, 953, 955, 958, 970, 972, 973, 974,
                977, 979, 998]
 
+
 def sample_classes(mode, classes=None):
     if mode == 'random':
         return np.random.randint(0, 1000, 3).tolist()
@@ -155,6 +165,7 @@ def sample_classes(mode, classes=None):
 
     else:
         assert ValueError("Unknown sample mode {mode}")
+
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -217,12 +228,13 @@ def main(args):
             df = pd.DataFrame(columns=[im_name] + ys)
             df.to_csv(csv_path, mode='a')
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, required=True,
                         choices=['random', 'best_classes', 'fixed_classes'],
                         help='Choose between random sampling, sampling from the best ' +
-                        'classes or the classes passed to args.classes')
+                             'classes or the classes passed to args.classes')
     parser.add_argument('--n_data', type=int, required=True,
                         help='How many datapoints to sample')
     parser.add_argument('--run_name', type=str, required=True,
@@ -235,7 +247,7 @@ if __name__ == '__main__':
                         help='Truncation value for the sampling the noise')
     parser.add_argument('--classes', nargs='+', default=[0, 0, 0],
                         help='Classes to sample from, use in conjunction with ' +
-                        'args.mode=fixed_classes. Order: [Shape, Foreground, Background]')
+                             'args.mode=fixed_classes. Order: [Shape, Foreground, Background]')
     parser.add_argument('--interp', type=str, default='',
                         choices=['', 'all', 'shape', 'text', 'bg'],
                         help='Save interpolation sheet instead of single ims.')

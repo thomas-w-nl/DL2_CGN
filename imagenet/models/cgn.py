@@ -108,5 +108,4 @@ class CGN(nn.Module):
         # Background
         background = self.f_bg(*inp2)
         background_mask = self.u2net(background)
-
         return x_gt, mask, premask.detach(), foreground, background, background_mask

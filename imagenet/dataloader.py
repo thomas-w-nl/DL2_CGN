@@ -3,7 +3,7 @@ import math
 import os
 from os.path import join
 from math import ceil
-from glob import glob
+import glob
 from pathlib import PurePosixPath
 
 from PIL import Image
@@ -18,6 +18,23 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
 # helper functions
+
+class UnNormalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        """
+        Args:
+            tensor (Tensor): Tensor image of size (C, H, W) to be unnormalized.
+        Returns:
+            Tensor: Unnormalized image.
+        """
+        for t, m, s in zip(tensor, self.mean, self.std):
+            t.mul_(s).add_(m)
+            # The normalize code -> t.sub_(m).div_(s)
+        return tensor
 
 class DistributedSampler(Sampler):
 
@@ -287,6 +304,44 @@ class Imagenet9(object):
         test_loader = DataLoader(test_set, batch_size=batch_size, sampler=sampler,
                                  shuffle=False, num_workers=workers, pin_memory=True)
         return test_loader
+
+
+class RefinementDataset(Dataset) :
+
+    def __init__(self, path, transform=None):
+        super().__init__()
+
+        path = os.path.join(path, '') # ensure trailing slash
+
+        self.transform = transform
+        if transform is None:
+            normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                             std=[0.229, 0.224, 0.225])
+            self.transform = transforms.Compose([transforms.ToTensor(), ]) #normalize])
+
+        self.mask_transform = transforms.ToTensor()
+        self.gt_paths = sorted(glob.glob(path + "*gt.png"))
+        self.mask_paths = sorted(glob.glob(path + "*mask.png"))
+        self.fg_paths = sorted(glob.glob(path + "*fg.png"))
+        self.bg_paths = sorted(glob.glob(path + "*bg.png"))
+        print(len(self.gt_paths))
+        assert len(self.gt_paths), f"Empty dataset {os.path.abspath(path)}"
+
+
+    def __getitem__(self, idx):
+        gt = Image.open(self.gt_paths[idx])
+        mask = Image.open(self.mask_paths[idx])
+        fg = Image.open(self.fg_paths[idx])
+        bg = Image.open(self.bg_paths[idx])
+        return {
+            'gt': self.transform(gt),
+            'mask': self.mask_transform(mask),
+            'fg': self.transform(fg),
+            'bg': self.transform(bg),
+        }
+
+    def __len__(self):
+        return len(self.gt_paths)
 
 # dataloaders
 
