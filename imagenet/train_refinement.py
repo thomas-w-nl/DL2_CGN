@@ -27,6 +27,7 @@ repackage.up()
 from imagenet.dataloader import RefinementDataset
 from imagenet.models import CGN, U2NET, DiceLoss, RefineNetShallow
 from utils import toggle_grad
+from shared.losses import PerceptualLoss
 
 
 def save_image(im, path):
@@ -75,9 +76,9 @@ def show_images(x_gt, x_gen, x_gen_refined):
     # b = unnormalize(b)
     # c = unnormalize(c)
 
-    a = a.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0,1)
-    b = b.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0,1)
-    c = c.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0,1)
+    a = a.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0, 1)
+    b = b.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0, 1)
+    c = c.detach().cpu()[0].permute(1, 2, 0).numpy().clip(0, 1)
 
     fig, axs = plt.subplots(2, 2)
     for x in axs.ravel():
@@ -99,8 +100,8 @@ def main(args):
 
     # Setup refinement network
 
-    # model = U2NET(6, 3, outconv_ch=18)
-    model = RefineNetShallow()
+    model = U2NET(6, 3, outconv_ch=18)
+    # model = RefineNetShallow()
 
     model.to(device)
     toggle_grad(model, True)
@@ -108,12 +109,15 @@ def main(args):
     # Setup training utilities
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[15, 25], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.reduce_lr_on, gamma=0.1)
 
     if args.dice_loss:
         criterion = DiceLoss
     else:
         criterion = nn.CrossEntropyLoss()
+
+    criterion = PerceptualLoss(style_wgts=[4, 4, 4, 4])
+    criterion.to(device)
 
     dataset = RefinementDataset(args.dataset)
 
@@ -123,7 +127,7 @@ def main(args):
         dataset,
         batch_size=args.batch_sz,
         shuffle=True,
-        num_workers=8, pin_memory=True, drop_last=True)
+        num_workers=4, pin_memory=False, drop_last=True)
 
     # logging
     run = wandb.init(project="dl2-refinement", entity="thomas-w",
@@ -155,15 +159,16 @@ def main(args):
             loss = criterion(x_gen_ref, x_gt)
             loss.backward()
             optimizer.step()
-            scheduler.step()
 
             loss_total.append(loss.cpu().item())
 
         if os.getlogin() == "thomas":
-            show_images(x_gt, x_gen, x_gen_ref)
+            if x_gt is not None:
+                show_images(x_gt, x_gen, x_gen_ref)
 
         # lr = scheduler.get_last_lr()
         lr = optimizer.param_groups[0]['lr']
+        scheduler.step()
 
         loss = np.mean(loss_total)
         print("avg loss:", loss)
@@ -192,6 +197,8 @@ if __name__ == '__main__':
                         help='How many epochs to train for')
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='Learning rate')
+    parser.add_argument('--reduce_lr_on', nargs="+", type=int, default=[],
+                        help="Milestones for MultiStepLR")
     parser.add_argument('--notes', type=str, default="",
                         help='Notes for wandb')
     parser.add_argument('--dataset', type=str, default="imagenet/data/refinement1/",

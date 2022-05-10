@@ -432,13 +432,14 @@ class RefineNetShallow(nn.Module):
     Small convnet to learn to improve the blending of the images.
     """
 
-    def __init__(self, in_ch=6, out_ch=3):
+    def __init__(self, in_ch=6, out_ch=3, verbose=False):
         super().__init__()
 
         self.conv1 = nn.Conv2d(in_ch, 128, 3, padding=1)
         self.conv2 = nn.Conv2d(128, 128, 3, padding=1)
         self.conv3 = nn.Conv2d(128, out_ch, 3, padding=1)
         self.relu = nn.ReLU(inplace=True)
+        self.verbose = verbose
 
     def forward(self, x):
         residuals = self.relu(self.conv1(x))
@@ -448,7 +449,8 @@ class RefineNetShallow(nn.Module):
         # construct the ground truth image from the foreground and background
         x_gt = x[:, :3] + x[:, 3:]
 
-        # print("residuals sum", residuals.sum().item())
+        if self.verbose:
+            print("residuals sum", residuals.sum().item())
 
         return residuals + x_gt
 
