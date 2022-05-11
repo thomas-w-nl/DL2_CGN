@@ -25,9 +25,11 @@ import repackage
 repackage.up()
 
 from imagenet.dataloader import RefinementDataset
-from imagenet.models import CGN, U2NET, DiceLoss, RefineNetShallow
+from imagenet.models import CGN, U2NET, DiceLoss, RefineNetShallow, U2NETP
 from utils import toggle_grad
 from shared.losses import PerceptualLoss
+import torchvision.models as models
+
 
 
 def save_image(im, path):
@@ -98,10 +100,9 @@ def show_images(x_gt, x_gen, x_gen_refined):
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Setup refinement network
-
-    model = U2NET(6, 3, outconv_ch=18)
-    # model = RefineNetShallow()
+    # Setup GAN network
+    model_d = models.resnet18(pretrained=True)
+    model_g = U2NETP(3, 3)
 
     model.to(device)
     toggle_grad(model, True)
