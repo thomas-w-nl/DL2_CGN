@@ -8,6 +8,7 @@ from torch import nn
 import numpy as np
 import cv2
 import time
+from tqdm import tqdm
 
 
 class RefinementWrapper():
@@ -76,19 +77,28 @@ def main(args):
     dataloader = load_test_set(args)
     criterion = load_criterion(args)
     scores = []
-    for data in dataloader:
-        x_gt = data["gt"].to(device)
-        mask = data["mask"].to(device)
-        foreground = data["fg"].to(device)
-        background = data["bg"].to(device)
+    for data in tqdm(dataloader):
+        x_gt = data["gt"].to(device)[0].T
+        mask = data["mask"].to(device)[0].T
+        foreground = data["fg"].to(device)[0].T
+        background = data["bg"].to(device)[0].T
 
-        model_pred = model.predict(foreground, background, mask)
-        cv2.imshow(model_pred)
-        cv2.imshow(x_gt)
-        cv2.waitKey(0)
+        mask[mask > 0.3] = True
+        mask[mask <= 0.3] = False
+
+        print("Predicting...")
+        model_pred = model.predict(foreground, background, mask.numpy())
+
+        model_pred_show = cv2.normalize(model_pred.numpy(), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX).astype(np.uint8)
+        x_gt_show = cv2.normalize(x_gt.numpy(), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX).astype(np.uint8)
+
+        # cv2.imshow("Prediction", model_pred_show)
+        # cv2.imshow("GT", x_gt_show)
+        # cv2.waitKey(0)
 
         scores.append(criterion(model_pred, x_gt))
 
+    print(np.mean(scores))
     save_scores(scores, args)
 
 

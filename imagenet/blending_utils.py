@@ -64,6 +64,7 @@ def poisson_sparse_matrix(points):
 
     # Set up row for each point in mask
     for i,index in enumerate(points):
+        print("\r", i, end="")
         # Should have 4's diagonal
         A[i,i] = 4
         # Get all surrounding points
@@ -78,11 +79,8 @@ def poisson_sparse_matrix(points):
 
 # Main method
 # Does Poisson image editing on one channel given a source, target, and mask
-def process(source, target, mask):
-    indicies = mask_indicies(mask)
+def process(source, target, mask, A, indicies):
     N = len(list(indicies))
-    # Create poisson A matrix. Contains mostly 0's, some 4's and -1's
-    A = poisson_sparse_matrix(indicies)
     # Create B matrix
     b = np.zeros(N)
     for i,index in enumerate(indicies):
@@ -114,6 +112,12 @@ def copy_paste_blending(source, target, mask):
 def poisson_blending(source, target, mask):
     mask = mask[:, :, 0]
     channels = source.shape[-1]
-    result_stack = [process(source[:, :, i], target[:, :, i], mask) for i in range(channels)]
+
+    indicies = mask_indicies(mask)
+    print("N ind", len(indicies))
+    # Create poisson A matrix. Contains mostly 0's, some 4's and -1's
+    A = poisson_sparse_matrix(indicies)
+
+    result_stack = [process(source[:, :, i], target[:, :, i], mask, A, indicies) for i in range(channels)]
     result = np.dstack(result_stack)
     return result
