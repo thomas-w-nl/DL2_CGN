@@ -96,7 +96,7 @@ def main(args):
 
             x_gen = mask * foreground + (1 - mask) * background
 
-            input = torch.hstack((mask * foreground, background))
+            input = torch.hstack((mask * foreground, (1 - mask) * background))
 
             input = input.detach()
             x_gt = x_gt.detach()
