@@ -30,11 +30,9 @@ from utils import toggle_grad
 from shared.losses import PerceptualLoss
 import torchvision.models as models
 
-def get_imagenet_data(args):
-    imagenet = torchvision.datasets.ImageNet(args.path)
-
-    np.random.seed(seed=69)
-
+def get_imagenet_data(n):
+    imagenet = torchvision.datasets.ImageNet('.')
+    np.random.seed(69)
     imagenet_n = torch.utils.data.Subset(imagenet, np.random.choice(len(imagenet), n, replace=False))
 
     return imagenet_n
