@@ -3,6 +3,7 @@ import os
 import torch
 import torch.nn.functional as F
 import argparse
+import torchvision
 
 import repackage
 from PIL import Image
@@ -59,28 +60,10 @@ def generate_images(args):
             to_pil(foreground).save(dataset_path + f"{i}_fg.png")
             to_pil(background).save(dataset_path + f"{i}_bg.png")
 
-
-
-        #     if i:
-        #         data_dict["bg"] = torch.cat((background.cpu(), data_dict["bg"]), dim=0)
-        #         data_dict["fg"] = torch.cat((foreground.cpu(), data_dict["fg"]), dim=0)
-        #         data_dict["m"] = torch.cat((mask.cpu(), data_dict["m"]), dim=0)
-        #         data_dict["gt"] = torch.cat((x_gt.cpu(), data_dict["gt"]), dim=0)
-        #         data_dict["labels"] = torch.cat((y_vec, data_dict["labels"]), dim=0)
-        #     else:
-        #         data_dict["labels"] = y_vec.cpu()
-        #         data_dict["bg"] = background.cpu()
-        #         data_dict["fg"] = foreground.cpu()
-        #         data_dict["m"] = mask.cpu()
-        #         data_dict["gt"] = x_gt.cpu()
-        #
-        # print(data_dict["gt"].shape)
-
     return
 
 
 def main(args):
-
     generate_images(args)
 
 
