@@ -30,19 +30,38 @@ from utils import toggle_grad
 from shared.losses import PerceptualLoss
 import torchvision.models as models
 
-def get_imagenet_data(n):
+def get_real_dataloader(args, n):
     imagenet = torchvision.datasets.ImageNet('.')
     np.random.seed(69)
     imagenet_n = torch.utils.data.Subset(imagenet, np.random.choice(len(imagenet), n, replace=False))
 
-    return imagenet_n
+    print("Real dataset length:", len(imagenet_n))
+
+    loader = torch.utils.data.DataLoader(
+        imagenet_n,
+        batch_size=args.batch_sz,
+        shuffle=True,
+        num_workers=4, pin_memory=False, drop_last=True)
+
+    return loader
+
+def get_fake_dataloader(args):
+    dataset = RefinementDataset(args.dataset)
+    print("Fake dataset length:", len(dataset))
+
+    loader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=args.batch_sz,
+        shuffle=True,
+        num_workers=4, pin_memory=False, drop_last=True)
+
+    return loader
 
 def discriminator_train_batch(model, batch):
 
 
 def refinement_train_batch():
     pass
-
 
 
 def main(args):
@@ -66,49 +85,39 @@ def main(args):
 
     criterion = nn.CrossEntropyLoss()
 
-
-    dataset = RefinementDataset(args.dataset)
-
-    print("Dataset length:", len(dataset))
-
-    trainloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=args.batch_sz,
-        shuffle=True,
-        num_workers=4, pin_memory=False, drop_last=True)
-
     # logging
     run = wandb.init(project="dl2-refinement", entity="thomas-w",
                      config=vars(args),
                      # group=args.model,
                      notes=f"{args.notes}", reinit=True)
 
+    fake_dataloder1 = get_fake_dataloader(args)
+    fake_dataloder2 = get_fake_dataloader(args)
+    real_loader = get_real_dataloader(args, len(fake_dataloder1.dataset))
+
     # generate data
     for epoch in trange(args.epochs):
         loss_total = []
 
-        for data in trainloader:
-            x_gt = data["gt"].to(device)
-            mask = data["mask"].to(device)
-            foreground = data["fg"].to(device)
-            background = data["bg"].to(device)
-
-            x_gen = mask * foreground + (1 - mask) * background
+        for fake_1, fake_2, real in zip(fake_dataloder1, fake_dataloder2, real_loader):
+            x_gen1 = fake_1.to(device)
+            x_gen2 = fake_2.to(device)
+            real = real.to(device)
 
             # Create fake images
             with torch.no_grad():
-                images_fake = model_g(x_gen)
+                images_fake = model_g(x_gen1)
             labels_fake = torch.zeros((images_fake.shape[0], 1))
 
-
             # append fake and real
-
+            combined_real_fake = np.concatenate([images_fake, real])
+            combined_labels = np.concatenate([labels_fake, labels_fake+1])
 
             # Discriminator gradient step
             discriminator_optimizer.zero_grad()
-            pred = model_d(fake and real)
+            pred = model_d(combined_real_fake)
 
-            loss = criterion(pred, labels)
+            loss = criterion(pred, combined_labels)
             loss.backward()
             discriminator_optimizer.step()
 
@@ -118,17 +127,15 @@ def main(args):
             # Generator gradient step
             generator_optimizer.zero_grad()
 
-            images_fake = model_g(x_gen) # TODO NIEUWE PLAATJES
+            images_fake = model_g(x_gen2)
             labels_fake = torch.zeros((images_fake.shape[0], 1))
 
             with torch.no_grad():
                 pred = model_d(images_fake)
 
-
             loss = criterion(pred, labels_fake)
             loss.backward()
             generator_optimizer.step()
-
 
 
         if os.getlogin() == "thomas":

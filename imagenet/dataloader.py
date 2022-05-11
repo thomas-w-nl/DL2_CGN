@@ -333,12 +333,9 @@ class RefinementDataset(Dataset) :
         mask = Image.open(self.mask_paths[idx])
         fg = Image.open(self.fg_paths[idx])
         bg = Image.open(self.bg_paths[idx])
-        return {
-            'gt': self.transform(gt),
-            'mask': self.mask_transform(mask),
-            'fg': self.transform(fg),
-            'bg': self.transform(bg),
-        }
+
+        x_gen = self.mask_transform(mask) * self.transform(fg) + (1 - self.mask_transform(mask)) * self.transform(bg)
+        return x_gen
 
     def __len__(self):
         return len(self.gt_paths)
