@@ -57,12 +57,6 @@ def get_fake_dataloader(args):
 
     return loader
 
-def discriminator_train_batch(model, batch):
-
-
-def refinement_train_batch():
-    pass
-
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -97,7 +91,8 @@ def main(args):
 
     # generate data
     for epoch in trange(args.epochs):
-        loss_total = []
+        loss_total_discriminator = []
+        loss_total_generator = []
 
         for fake_1, fake_2, real in zip(fake_dataloder1, fake_dataloder2, real_loader):
             x_gen1 = fake_1.to(device)
@@ -121,11 +116,12 @@ def main(args):
             loss.backward()
             discriminator_optimizer.step()
 
-            # loss_total.append(loss.cpu().item())
+            loss_total_discriminator.append(loss.cpu().item())
 
 
             # Generator gradient step
             generator_optimizer.zero_grad()
+
 
             images_fake = model_g(x_gen2)
             labels_fake = torch.zeros((images_fake.shape[0], 1))
@@ -137,29 +133,32 @@ def main(args):
             loss.backward()
             generator_optimizer.step()
 
+            loss_total_generator.append(loss.cpu().item())
 
-        if os.getlogin() == "thomas":
-            if x_gt is not None:
-                show_images(x_gt, x_gen, x_gen_ref)
 
         # lr = scheduler.get_last_lr()
         lr = discriminator_optimizer.param_groups[0]['lr']
         scheduler.step()
 
-        loss = np.mean(loss_total)
-        print("avg loss:", loss)
+        loss_generator = np.mean(loss_total_generator)
+        loss_discriminator = np.mean(loss_total_discriminator)
+        print("avg loss_generator:    ", loss_generator)
+        print("avg loss_discriminator:", loss_discriminator)
+
         log = {
             "epoch": epoch,
-            "loss": loss,
+            "loss_generator": loss_generator,
+            "loss_discriminator": loss_discriminator,
             "lr": lr,
         }
         wandb.log(log)
 
-    filename = f"trained_{datetime.now().strftime('%d-%m-%Y_%H.%M.%S')}.pt"
-    torch.save(model, "trained_last.pt")
-    torch.save(model, filename)
-    print("Saved weights as", filename)
-
+    # filename = f"trained_{datetime.now().strftime('%d-%m-%Y_%H.%M.%S')}.pt"
+    torch.save(model_d, "trained_last_discriminator.pt")
+    torch.save(model_g, "trained_last_generator.pt")
+    # torch.save(model, filename)
+    # print("Saved weights as", filename)
+    print("Saved model")
     run.finish()
 
 
@@ -181,10 +180,7 @@ if __name__ == '__main__':
                         help='Path to the dataset')
     parser.add_argument('--batch_sz', type=int, default=8,
                         help='Batch size, default 32')
-    parser.add_argument('--truncation', type=float, default=1.0,
-                        help='Truncation value for the sampling the noise')
 
     args = parser.parse_args()
-    # if args.mode != 'fixed_classes' and [0, 0, 0] != args.classes:
-    #     warnings.warn(f"You supply classes, but they won't be used for mode = {args.mode}")
+
     main(args)
