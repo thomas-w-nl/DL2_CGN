@@ -104,8 +104,11 @@ def main(args):
     model_d = models.resnet18(pretrained=True)
     model_g = U2NETP(3, 3)
 
-    model.to(device)
-    toggle_grad(model, True)
+    model_d.to(device)
+    model_g.to(device)
+
+    toggle_grad(model_d, True)
+    toggle_grad(model_g, True)
 
     # Setup training utilities
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
