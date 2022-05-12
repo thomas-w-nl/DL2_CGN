@@ -33,15 +33,24 @@ import torchvision.models as models
 
 
 def get_real_dataloader(args, n):
-    # imagenet = torchvision.datasets.ImageNet("/storage/twiggers/",
-    #                                          transform=torchvision.transforms.Resize((256, 256)))
 
     tf = torchvision.transforms.Compose([
         torchvision.transforms.Resize((256, 256)),
         torchvision.transforms.ToTensor()])
 
-    imagenet = torchvision.datasets.CIFAR10("imagenet/data/cifar/",
-                                            transform=tf, download=True)
+    try:
+        # raise RuntimeError("I hate imagenet")
+        imagenet = torchvision.datasets.ImageNet("/storage/twiggers/",
+                                                 transform=tf)
+        print("Using imagenet!")
+    except RuntimeError as e:
+        print(f"[NOTE] Imagenet not found, using cifar10 ({e})")
+        imagenet = torchvision.datasets.CIFAR10("imagenet/data/cifar/",
+                                                transform=tf, download=True)
+
+
+
+
 
     np.random.seed(69)
     imagenet_n = torch.utils.data.Subset(imagenet, np.random.choice(len(imagenet), n, replace=False))
@@ -73,9 +82,13 @@ def get_fake_dataloader(args):
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    fake_dataloder1 = get_fake_dataloader(args)
+    fake_dataloder2 = get_fake_dataloader(args)
+    real_loader = get_real_dataloader(args, len(fake_dataloder1.dataset))
+
     # Setup GAN network
     model_d = models.resnet18(pretrained=False)
-    model_d.fc = nn.Linear(512 * 1, 2)
+    model_d.fc = nn.Linear(512 * 1, 1)
 
     model_g = U2NETP(3, 3)
 
@@ -86,17 +99,12 @@ def main(args):
     toggle_grad(model_g, True)
 
     # Setup training utilities
-    discriminator_optimizer = torch.optim.Adam(model_d.parameters(), lr=args.lr * 0.1)
+    discriminator_optimizer = torch.optim.SGD(model_d.parameters(), lr=args.lr )
     generator_optimizer = torch.optim.Adam(model_g.parameters(), lr=args.lr)
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(discriminator_optimizer, milestones=args.reduce_lr_on, gamma=0.1)
 
-    criterion = nn.CrossEntropyLoss()
-
-    fake_dataloder1 = get_fake_dataloader(args)
-    fake_dataloder2 = get_fake_dataloader(args)
-    real_loader = get_real_dataloader(args, len(fake_dataloder1.dataset))
-    # real_loader = get_fake_dataloader(args)
+    criterion = nn.BCEWithLogitsLoss()
 
     # logging
     run = wandb.init(project="dl2-refinement", entity="thomas-w",
@@ -104,40 +112,41 @@ def main(args):
                      # group=args.model,
                      notes=f"{args.notes}", reinit=True)
 
-    print("Pretraining Unet")
-    pretrain_optimizer = torch.optim.Adam(model_g.parameters(), lr = 1e-2)
-    for i in range(10):
+    criterion_mse = nn.MSELoss()
 
-        criterion_pretrain = nn.MSELoss()
-        total = 0
-        for i, img in enumerate(fake_dataloder1):
-            img = img.to(device)
-            # Generator gradient step
-            pretrain_optimizer.zero_grad()
-            images_fake = model_g(img)
-            loss = criterion_pretrain(images_fake, img)
-            loss.backward()
-            pretrain_optimizer.step()
-            total += loss.item()
-
-            # Pretraining is done quite quickly
-            if i == 500:
-                break
-        loss = total / len(fake_dataloder1)
-        print("Loss", loss)
-        if i == 6:
-            pretrain_optimizer = torch.optim.Adam(model_g.parameters(), lr=1e-3)
+    # print("Pretraining Unet")
+    # pretrain_optimizer = torch.optim.Adam(model_g.parameters(), lr = 1e-2)
+    # for i in range(10):
+    #
+    #
+    #     total = 0
+    #     for i, img in enumerate(fake_dataloder1):
+    #     # for i, (img, label) in enumerate(real_loader):
+    #         img = img.to(device)
+    #         # Generator gradient step
+    #         pretrain_optimizer.zero_grad()
+    #         images_fake = model_g(img)
+    #         loss = criterion_mse(images_fake, img)
+    #         loss.backward()
+    #         pretrain_optimizer.step()
+    #         total += loss.item()
+    #
+    #         # Pretraining is done quite quickly
+    #         if i == 500:
+    #             break
+    #     loss = total / len(fake_dataloder1)
+    #     print("Loss", loss)
+    #     if i == 6:
+    #         pretrain_optimizer = torch.optim.Adam(model_g.parameters(), lr=1e-3)
 
         # im = torchvision.utils.make_grid(torch.cat((images_fake.cpu(), img.cpu())), ).clip(0, 1).permute((1, 2, 0))
         # plt.imshow(im)
         # plt.show()
 
-    torch.save(model_g.state_dict(), "u2net_pretraining.pt")
-
+    # torch.save(model_g.state_dict(), "u2net_pretraining.pt")
+    #
     print("Loaded pretrained unet")
     model_g.load_state_dict(torch.load("u2net_pretraining.pt"))
-
-
 
     # generate data
     for epoch in trange(args.epochs):
@@ -154,37 +163,48 @@ def main(args):
             # Create fake images
             with torch.no_grad():
                 images_fake = model_g(x_gen1)
-            labels_fake = torch.zeros((images_fake.shape[0],), device=device).long()
+            labels_fake = torch.zeros((images_fake.shape[0],), device=device)
+            # labels_real = labels_fake + .9  # 0.9 is chosen as label smoothing, to reduce discriminator confidence
+            labels_real = labels_fake + 1  # breaks accuracy metric?
 
-            # append fake and real
-            combined_real_fake = torch.cat([images_fake, real])
-            combined_labels = torch.cat([labels_fake, labels_fake + 1])
 
+            ############################
             # Discriminator gradient step
+            ############################
             discriminator_optimizer.zero_grad()
-            pred = model_d(combined_real_fake)
-            loss = criterion(pred, combined_labels)
+            pred = model_d(real).squeeze(1)
+            loss = criterion(pred, labels_real)
             loss.backward()
+            discriminator_optimizer.step()
+
+            loss_total_discriminator.append(loss.cpu().item())
+            accuracy_real = torch.sum((torch.sigmoid(pred) > .5)).detach().cpu() / len(labels_real)
+            total_accuracy.append(accuracy_real)
+
+            discriminator_optimizer.zero_grad()
+            pred = model_d(images_fake).squeeze(1)
+            loss = criterion(pred, labels_fake)
+            loss.backward()
+            discriminator_optimizer.step()
 
 
             loss_total_discriminator.append(loss.cpu().item())
-            accuracy = torch.sum(pred.argmax(1) == combined_labels).detach().cpu() / len(combined_labels)
-            total_accuracy.append(accuracy)
+            accuracy_fake = torch.sum((torch.sigmoid(pred) < .5)).detach().cpu() / len(labels_fake)
+            total_accuracy.append(accuracy_fake)
 
-            if accuracy < .8:
-                discriminator_optimizer.step()
 
+            ############################
             # Generator gradient step
+            ############################
             generator_optimizer.zero_grad()
 
             images_fake = model_g(x_gen2)
-            labels_fake = torch.zeros((images_fake.shape[0],), device=device).long()
+            labels_fake = torch.ones((images_fake.shape[0],), device=device) # Flipped labels to maximize log D
 
             toggle_grad(model_d, False)
-            pred = model_d(images_fake)
+            pred = model_d(images_fake).squeeze(1)
             toggle_grad(model_d, True)
-
-            loss = criterion(pred, labels_fake)
+            loss = criterion(pred, labels_fake) + criterion_mse(x_gen2, images_fake)
             loss.backward()
             generator_optimizer.step()
 
