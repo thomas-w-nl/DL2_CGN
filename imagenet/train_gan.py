@@ -40,7 +40,12 @@ def get_real_dataloader(args, n):
 
     try:
         # raise RuntimeError("I hate imagenet")
-        imagenet = torchvision.datasets.ImageNet("/storage/twiggers/",
+        path = "/storage/twiggers/"
+        if os.uname()[1] == "robolabws7":
+            path = "/storage3/twiggers/"
+
+
+        imagenet = torchvision.datasets.ImageNet(path,
                                                  transform=tf)
         print("Using imagenet!")
     except RuntimeError as e:
@@ -86,8 +91,11 @@ def main(args):
     fake_dataloder2 = get_fake_dataloader(args)
     real_loader = get_real_dataloader(args, len(fake_dataloder1.dataset))
 
+    if not args.pretrained:
+        print("NOTE: Not using pretrained networks")
+
     # Setup GAN network
-    model_d = models.resnet18(pretrained=False)
+    model_d = models.resnet18(pretrained=args.pretrained)
     model_d.fc = nn.Linear(512 * 1, 1)
 
     model_g = U2NETP(3, 3)
@@ -98,9 +106,10 @@ def main(args):
     toggle_grad(model_d, True)
     toggle_grad(model_g, True)
 
+
     # Setup training utilities
-    discriminator_optimizer = torch.optim.SGD(model_d.parameters(), lr=args.lr )
-    generator_optimizer = torch.optim.Adam(model_g.parameters(), lr=args.lr)
+    discriminator_optimizer = torch.optim.Adam(model_d.parameters(), lr=args.lr, betas=(.5, 0.999))
+    generator_optimizer = torch.optim.Adam(model_g.parameters(), lr=args.lr, betas=(.5, 0.999))
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(discriminator_optimizer, milestones=args.reduce_lr_on, gamma=0.1)
 
@@ -112,7 +121,7 @@ def main(args):
                      # group=args.model,
                      notes=f"{args.notes}", reinit=True)
 
-    criterion_mse = nn.MSELoss()
+    criterion_mse = nn.L1Loss() # L1 loss from pix2pix paper
 
     # print("Pretraining Unet")
     # pretrain_optimizer = torch.optim.Adam(model_g.parameters(), lr = 1e-2)
@@ -145,15 +154,16 @@ def main(args):
 
     # torch.save(model_g.state_dict(), "u2net_pretraining.pt")
     #
-    print("Loaded pretrained unet")
-    model_g.load_state_dict(torch.load("u2net_pretraining.pt"))
+    if args.pretrained:
+        print("Loaded pretrained unet")
+        model_g.load_state_dict(torch.load("u2net_pretraining.pt"))
 
     # generate data
     for epoch in trange(args.epochs):
         loss_total_discriminator = []
         loss_total_generator = []
         total_accuracy = []
-        last_total_accuracy = .5
+        last_total_accuracy = 0
 
         for fake_1, fake_2, (real, _) in zip(fake_dataloder1, fake_dataloder2, real_loader):
             x_gen1 = fake_1.to(device)
@@ -165,7 +175,7 @@ def main(args):
                 images_fake = model_g(x_gen1)
             labels_fake = torch.zeros((images_fake.shape[0],), device=device)
             # labels_real = labels_fake + .9  # 0.9 is chosen as label smoothing, to reduce discriminator confidence
-            labels_real = labels_fake + 1  # breaks accuracy metric?
+            labels_real = labels_fake + 1  # 0.9 breaks accuracy metric?
 
 
             ############################
@@ -175,7 +185,10 @@ def main(args):
             pred = model_d(real).squeeze(1)
             loss = criterion(pred, labels_real)
             loss.backward()
-            discriminator_optimizer.step()
+
+            # only optimize discriminator if it is not too good
+            if last_total_accuracy < .8:
+                discriminator_optimizer.step()
 
             loss_total_discriminator.append(loss.cpu().item())
             accuracy_real = torch.sum((torch.sigmoid(pred) > .5)).detach().cpu() / len(labels_real)
@@ -185,7 +198,10 @@ def main(args):
             pred = model_d(images_fake).squeeze(1)
             loss = criterion(pred, labels_fake)
             loss.backward()
-            discriminator_optimizer.step()
+
+            # only optimize discriminator if it is not too good
+            if last_total_accuracy < .8:
+                discriminator_optimizer.step()
 
 
             loss_total_discriminator.append(loss.cpu().item())
@@ -252,7 +268,7 @@ if __name__ == '__main__':
     #                          'classes or the classes passed to args.classes')
     parser.add_argument('--epochs', type=int, default=100,
                         help='How many epochs to train for')
-    parser.add_argument('--lr', type=float, default=1e-3,
+    parser.add_argument('--lr', type=float, default=0.0002, # From DCGAN paper
                         help='Learning rate')
     parser.add_argument('--reduce_lr_on', nargs="+", type=int, default=[],
                         help="Milestones for MultiStepLR")
@@ -262,6 +278,8 @@ if __name__ == '__main__':
                         help='Path to the dataset')
     parser.add_argument('--batch_sz', type=int, default=16,
                         help='Batch size, default 16')
+    parser.add_argument('--pretrained', action='store_true',
+                        help='Use pretrained weights generator and discriminator')
 
     args = parser.parse_args()
 
