@@ -2,6 +2,9 @@ mnists/data/*
 !mnists/data/textures/
 imagenet/data/*
 
+*.npy
+*.jpg 
+
 imagenet/experiments/*
 !imagenet/experiments/.placeholder
 mnists/experiments/*
