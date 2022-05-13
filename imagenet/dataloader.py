@@ -324,7 +324,6 @@ class RefinementDataset(Dataset) :
         self.mask_paths = sorted(glob.glob(path + "*mask.png"))
         self.fg_paths = sorted(glob.glob(path + "*fg.png"))
         self.bg_paths = sorted(glob.glob(path + "*bg.png"))
-        print(len(self.gt_paths))
         assert len(self.gt_paths), f"Empty dataset {os.path.abspath(path)}"
 
 

@@ -10,7 +10,7 @@ class REBNCONV(nn.Module):
 
         self.conv_s1 = nn.Conv2d(in_ch, out_ch, 3, padding=1 * dirate, dilation=1 * dirate)
         self.bn_s1 = nn.BatchNorm2d(out_ch)
-        self.relu_s1 = nn.ReLU(inplace=True)
+        self.relu_s1 = nn.LeakyReLU(inplace=True) # Tip from https://github.com/soumith/ganhacks
 
     def forward(self, x):
         hx = x
@@ -492,7 +492,7 @@ class U2NETP(nn.Module):
         self.side5 = nn.Conv2d(64, out_ch, 3, padding=1)
         self.side6 = nn.Conv2d(64, out_ch, 3, padding=1)
 
-        self.outconv = nn.Conv2d(6, out_ch, 1)
+        self.outconv = nn.Conv2d(6 * out_ch, out_ch, 1)
 
     def forward(self, x):
         hx = x
