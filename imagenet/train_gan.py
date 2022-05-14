@@ -166,6 +166,7 @@ def main(args):
         last_total_accuracy = 0
 
         for fake_1, fake_2, (real, _) in zip(fake_dataloder1, fake_dataloder2, real_loader):
+            toggle_grad(model_d, True)
             x_gen1 = fake_1.to(device)
             x_gen2 = fake_2.to(device)
             real = real.to(device)
@@ -183,28 +184,30 @@ def main(args):
             ############################
             discriminator_optimizer.zero_grad()
             pred = model_d(real).squeeze(1)
-            loss = criterion(pred, labels_real)
-            loss.backward()
+            loss_real = criterion(pred, labels_real)
+            loss_real.backward()
 
-            # only optimize discriminator if it is not too good
-            if last_total_accuracy < .8:
-                discriminator_optimizer.step()
+            # # only optimize discriminator if it is not too good
+            # if last_total_accuracy < .8:
+            #     discriminator_optimizer.step()
 
-            loss_total_discriminator.append(loss.cpu().item())
+            loss_total_discriminator.append(loss_real.cpu().item())
             accuracy_real = torch.sum((torch.sigmoid(pred) > .5)).detach().cpu() / len(labels_real)
             total_accuracy.append(accuracy_real)
 
             discriminator_optimizer.zero_grad()
             pred = model_d(images_fake).squeeze(1)
-            loss = criterion(pred, labels_fake)
-            loss.backward()
+            loss_fake = criterion(pred, labels_fake)
+            loss_fake.backward()
+
+            loss_real_fake = loss_real + loss_fake
 
             # only optimize discriminator if it is not too good
             if last_total_accuracy < .8:
                 discriminator_optimizer.step()
 
 
-            loss_total_discriminator.append(loss.cpu().item())
+            loss_total_discriminator.append(loss_fake.cpu().item())
             accuracy_fake = torch.sum((torch.sigmoid(pred) < .5)).detach().cpu() / len(labels_fake)
             total_accuracy.append(accuracy_fake)
 
@@ -219,7 +222,7 @@ def main(args):
 
             toggle_grad(model_d, False)
             pred = model_d(images_fake).squeeze(1)
-            toggle_grad(model_d, True)
+            #toggle_grad(model_d, True)
             loss = criterion(pred, labels_fake) + criterion_mse(x_gen2, images_fake)
             loss.backward()
             generator_optimizer.step()
