@@ -195,12 +195,10 @@ def main(args):
             accuracy_real = torch.sum((torch.sigmoid(pred) > .5)).detach().cpu() / len(labels_real)
             total_accuracy.append(accuracy_real)
 
-            discriminator_optimizer.zero_grad()
             pred = model_d(images_fake).squeeze(1)
             loss_fake = criterion(pred, labels_fake)
             loss_fake.backward()
 
-            loss_real_fake = loss_real + loss_fake
 
             # only optimize discriminator if it is not too good
             if last_total_accuracy < .8:
