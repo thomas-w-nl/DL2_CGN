@@ -165,7 +165,7 @@ def main(args):
         total_accuracy = []
         last_total_accuracy = 0
 
-        for fake_1, fake_2, (real, _) in zip(fake_dataloder1, fake_dataloder2, real_loader):
+        for (fake_1, _), (fake_2, _), (real, _) in zip(fake_dataloder1, fake_dataloder2, real_loader):
             toggle_grad(model_d, True)
             x_gen1 = fake_1.to(device)
             x_gen2 = fake_2.to(device)
