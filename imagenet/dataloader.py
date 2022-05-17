@@ -334,7 +334,7 @@ class RefinementDataset(Dataset) :
         bg = Image.open(self.bg_paths[idx])
 
         x_gen = self.mask_transform(mask) * self.transform(fg) + (1 - self.mask_transform(mask)) * self.transform(bg)
-        return x_gen
+        return x_gen, label
 
     def __len__(self):
         return len(self.gt_paths)
