@@ -333,6 +333,8 @@ class RefinementDataset(Dataset) :
         fg = Image.open(self.fg_paths[idx])
         bg = Image.open(self.bg_paths[idx])
 
+        label = gt_paths.split("_")[2]
+
         x_gen = self.mask_transform(mask) * self.transform(fg) + (1 - self.mask_transform(mask)) * self.transform(bg)
         return x_gen, label
 
