@@ -40,6 +40,7 @@ def generate_images(args):
 
             # sample random classes for image. Background, foreground and mask are all the same class.
             y_vec = torch.randint(0, 1000, (1,)).to(torch.int64)
+            class_label = y_vec.item()
             y_vec = F.one_hot(y_vec, 1000).to(torch.float32)
 
             dev = cgn.get_device()
@@ -55,10 +56,10 @@ def generate_images(args):
 
             to_pil = transforms.ToPILImage()
 
-            to_pil(x_gt).save(dataset_path + f"{i}_gt.png")
-            to_pil(mask).save(dataset_path + f"{i}_mask.png")
-            to_pil(foreground).save(dataset_path + f"{i}_fg.png")
-            to_pil(background).save(dataset_path + f"{i}_bg.png")
+            to_pil(x_gt).save(dataset_path + f"{i}_gt_{class_label}.png")
+            to_pil(mask).save(dataset_path + f"{i}_mask_{class_label}.png")
+            to_pil(foreground).save(dataset_path + f"{i}_fg_{class_label}.png")
+            to_pil(background).save(dataset_path + f"{i}_bg_{class_label}.png")
 
     return
 
