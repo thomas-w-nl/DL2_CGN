@@ -57,9 +57,9 @@ def generate_images(args):
             to_pil = transforms.ToPILImage()
 
             to_pil(x_gt).save(dataset_path + f"{i}_gt_{class_label}_.png")
-            to_pil(mask).save(dataset_path + f"{i}_mask_{class_label}.png")
-            to_pil(foreground).save(dataset_path + f"{i}_fg_{class_label}.png")
-            to_pil(background).save(dataset_path + f"{i}_bg_{class_label}.png")
+            to_pil(mask).save(dataset_path + f"{i}_mask_{class_label}_.png")
+            to_pil(foreground).save(dataset_path + f"{i}_fg_{class_label}_.png")
+            to_pil(background).save(dataset_path + f"{i}_bg_{class_label}_.png")
 
     return
 
