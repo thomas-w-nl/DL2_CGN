@@ -206,6 +206,11 @@ def main_worker(gpu, ngpus_per_node, args):
                                dl_shape_bias, dls_in9, args)
 
         # remember best acc@1 and save checkpoint
+        print("Metrics")
+
+        for k,v in metrics.items():
+            print("", k, v)
+
         acc1_overall = metrics['acc1/0_overall']
         is_best = acc1_overall > best_acc1_overall
         best_acc1_overall = max(acc1_overall, best_acc1_overall)
@@ -566,7 +571,7 @@ if __name__ == '__main__':
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('-b', '--batch-size', default=256, type=int,
                         metavar='N', help='mini-batch size (default: 256)')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M')
     parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
