@@ -321,9 +321,6 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
         if i % args.print_freq == 0:
             progress.display(i)
 
-        if i == 30:
-            print("Debug stop")
-            break
 
 
 def validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args):
