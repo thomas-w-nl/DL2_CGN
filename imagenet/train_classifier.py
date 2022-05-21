@@ -206,6 +206,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                dl_shape_bias, dls_in9, args)
 
         # remember best acc@1 and save checkpoint
+
         acc1_overall = metrics['acc1/0_overall']
         is_best = acc1_overall > best_acc1_overall
         best_acc1_overall = max(acc1_overall, best_acc1_overall)
@@ -321,6 +322,7 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
             progress.display(i)
 
 
+
 def validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args):
     real_accs = validate_imagenet(val_loader, model, args)
     cf_accs = validate_counterfactual(cf_val_loader, model, args)
@@ -426,12 +428,17 @@ def validate_counterfactual(val_loader, model, args):
     print(f'* Texture: Acc@1 {top1_texture.avg:.3f} Acc@5 {top5_texture.avg:.3f}')
     print(f'* BG: Acc@1 {top1_bg.avg:.3f} Acc@5 {top5_bg.avg:.3f}')
 
-    return {'acc1/2_shape': top1_shape.avg,
+    metrics = {'acc1/2_shape': top1_shape.avg,
             'acc1/3_texture': top1_texture.avg,
             'acc1/4_bg': top1_bg.avg,
             'acc5/2_shape': top5_shape.avg,
             'acc5/3_texture': top5_texture.avg,
             'acc5/4_bg': top5_bg.avg}
+
+    # metric is missing, might be this?
+    metrics["acc1/0_overall"] = torch.mean(torch.tensor([v for v in metrics.values()]))
+
+    return metrics
 
 
 def validate_shape_bias(model, dl):
@@ -566,7 +573,7 @@ if __name__ == '__main__':
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('-b', '--batch-size', default=256, type=int,
                         metavar='N', help='mini-batch size (default: 256)')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M')
     parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
