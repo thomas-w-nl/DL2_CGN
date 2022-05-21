@@ -169,15 +169,18 @@ def main_worker(gpu, ngpus_per_node, args):
 
     ### dataloaders
     train_loader, val_loader, train_sampler = get_imagenet_dls(args.distributed, args.batch_size, args.workers)
-    cf_train_loader, cf_val_loader, cf_train_sampler = get_cf_imagenet_dls(args.cf_data, args.cf_ratio, len(train_loader), args.distributed, args.batch_size, args.workers)
+
+    cf_train_loader, cf_val_loader, cf_train_sampler = [None] * len(train_loader), [None] * len(val_loader), None
+    if args.cfg:
+        cf_train_loader, cf_val_loader, cf_train_sampler = get_cf_imagenet_dls(args.cf_data, args.cf_ratio, len(train_loader), args.distributed, args.batch_size, args.workers)
+
     dl_shape_bias = get_cue_conflict_dls(args.batch_size, args.workers)
     dls_in9 = get_in9_dls(args.distributed, args.batch_size, args.workers, ['mixed_rand', 'mixed_same'])
 
     
     # eval before training
     if not args.resume:
-        metrics = validate(model, val_loader, cf_val_loader,
-                               dl_shape_bias, dls_in9, args)
+        metrics = validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args)
         if args.evaluate: return
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                                                     and args.rank % ngpus_per_node == 0):
@@ -194,16 +197,15 @@ def main_worker(gpu, ngpus_per_node, args):
             train_sampler.set_epoch(epoch)
             cf_train_sampler.set_epoch(epoch)
 
-        cf_train_loader.dataset.resample()
+        if args.cfg:
+            cf_train_loader.dataset.resample()
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, cf_train_loader, model, criterion,
-              optimizer, epoch, args)
+        train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
-        metrics = validate(model, val_loader, cf_val_loader,
-                               dl_shape_bias, dls_in9, args)
+        metrics = validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args)
 
         # remember best acc@1 and save checkpoint
         acc1_overall = metrics['acc1/0_overall']
@@ -273,7 +275,8 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
 
         if args.gpu is not None or torch.cuda.is_available():
             data = {k: v.cuda(args.gpu, non_blocking=True) for k, v in data.items()}
-            data_cf = {k: v.cuda(args.gpu, non_blocking=True) for k, v in data_cf.items()}
+            if data_cf:
+                data_cf = {k: v.cuda(args.gpu, non_blocking=True) for k, v in data_cf.items()}
 
         # compute output
         out = model(data['ims'])
@@ -282,31 +285,35 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
         # compute gradient
         loss.backward()
 
-        # compute output for counterfactuals
-        out_cf = model(data_cf['ims'])
-        loss_cf = criterion(out_cf['shape_preds'], data_cf['shape_labels'])
-        loss_cf += criterion(out_cf['texture_preds'], data_cf['texture_labels'])
-        loss_cf += criterion(out_cf['bg_preds'], data_cf['bg_labels'])
-
-        # compute gradient
-        loss_cf.backward()
-
-        # measure accuracy and record loss
         sz = len(data['ims'])
+
+        if args.cfg:
+            # compute output for counterfactuals
+            out_cf = model(data_cf['ims'])
+            loss_cf = criterion(out_cf['shape_preds'], data_cf['shape_labels'])
+            loss_cf += criterion(out_cf['texture_preds'], data_cf['texture_labels'])
+            loss_cf += criterion(out_cf['bg_preds'], data_cf['bg_labels'])
+
+            # compute gradient
+            loss_cf.backward()
+
+            # measure accuracy and record loss for counterfactuals
+            cf_losses.update(loss_cf.item(), data['ims'].size(0))
+            acc1, acc5 = accuracy(out_cf['shape_preds'], data_cf['shape_labels'], topk=(1, 5))
+            top1_shape.update(acc1[0], sz)
+            top5_shape.update(acc5[0], sz)
+            acc1, acc5 = accuracy(out_cf['texture_preds'], data_cf['texture_labels'], topk=(1, 5))
+            top1_texture.update(acc1[0], sz)
+            top5_texture.update(acc5[0], sz)
+            acc1, acc5 = accuracy(out_cf['bg_preds'], data_cf['bg_labels'], topk=(1, 5))
+            top1_bg.update(acc1[0], sz)
+            top5_bg.update(acc5[0], sz)
+
+        # measure accuracy and record loss for imagenet
         acc1, acc5 = accuracy(out['avg_preds'], data['labels'], topk=(1, 5))
         losses.update(loss.item(), data['ims'].size(0))
-        cf_losses.update(loss_cf.item(), data['ims'].size(0))
         top1_real.update(acc1[0], sz)
         top5_real.update(acc5[0], sz)
-        acc1, acc5 = accuracy(out_cf['shape_preds'], data_cf['shape_labels'], topk=(1, 5))
-        top1_shape.update(acc1[0], sz)
-        top5_shape.update(acc5[0], sz)
-        acc1, acc5 = accuracy(out_cf['texture_preds'], data_cf['texture_labels'], topk=(1, 5))
-        top1_texture.update(acc1[0], sz)
-        top5_texture.update(acc5[0], sz)
-        acc1, acc5 = accuracy(out_cf['bg_preds'], data_cf['bg_labels'], topk=(1, 5))
-        top1_bg.update(acc1[0], sz)
-        top5_bg.update(acc5[0], sz)
 
         # Step
         optimizer.step()
@@ -323,7 +330,10 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
 
 def validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args):
     real_accs = validate_imagenet(val_loader, model, args)
-    cf_accs = validate_counterfactual(cf_val_loader, model, args)
+    if cf_val_loader:
+        cf_accs = validate_counterfactual(cf_val_loader, model, args)
+    else:
+        cf_accs = {'cfg': 0}
     shapes_biases = validate_shape_bias(model, dl_shape_bias)
     in_9_accs = validate_in_9(dls_in9, model)
     val_res = {**real_accs, **cf_accs, **shapes_biases, **in_9_accs}
@@ -601,12 +611,10 @@ if __name__ == '__main__':
                         'multi node data parallel training')
 
     # my arguments
-    parser.add_argument('--cf_data', required=True, type=str,
-                        help='Path to the counterfactual dataset.')
-    parser.add_argument('--name', default='', type=str,
-                        help='name of the experiment')
-    parser.add_argument('--cf_ratio', default=1.0, type=float,
-                        help='Ratio of CF/Real data')
+    parser.add_argument('--train_cfg', action='store_true', help='Also train on counterfactual images')
+    parser.add_argument('--cf_data', type=str, help='Path to the counterfactual dataset.')
+    parser.add_argument('--name', default='', type=str, help='name of the experiment')
+    parser.add_argument('--cf_ratio', default=1.0, type=float, help='Ratio of CF/Real data')
 
     args = parser.parse_args()
     print(args)
