@@ -168,7 +168,7 @@ def main_worker(gpu, ngpus_per_node, args):
     
 
     ### dataloaders
-    train_loader, val_loader, train_sampler = get_imagenet_dls(args.distributed, args.batch_size, args.workers)
+    train_loader, val_loader, train_sampler = get_imagenet_dls(args.distributed, args.batch_size, args.workers, args.data)
 
     cf_train_loader, cf_val_loader, cf_train_sampler = [None] * len(train_loader), [None] * len(val_loader), None
     if args.cfg:
@@ -208,8 +208,13 @@ def main_worker(gpu, ngpus_per_node, args):
         metrics = validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args)
 
         # remember best acc@1 and save checkpoint
+        if args.cfg:
+            # Use average acc@1 on counterfactuals
+            acc1_overall = metrics['acc1/0_overall']
+        else:
+            # Use acc@1 on imagenet instead
+            acc1_overall = metrics['acc1/1_real']
 
-        acc1_overall = metrics['acc1/0_overall']
         is_best = acc1_overall > best_acc1_overall
         best_acc1_overall = max(acc1_overall, best_acc1_overall)
 
@@ -332,7 +337,7 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
 
 def validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args):
     real_accs = validate_imagenet(val_loader, model, args)
-    if cf_val_loader:
+    if cf_val_loader[0] is not None:
         cf_accs = validate_counterfactual(cf_val_loader, model, args)
     else:
         cf_accs = {'cfg': 0}
@@ -568,8 +573,7 @@ def accuracy(output, target, topk=(1,)):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-    parser.add_argument('--data', default='data/ImageNet', 
-                        help='path to dataset')
+    parser.add_argument('--data', default='data/ImageNet', help='path to dataset')
     parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                         choices=model_names,
                         help='model architecture: ' +
@@ -618,7 +622,7 @@ if __name__ == '__main__':
                         'multi node data parallel training')
 
     # my arguments
-    parser.add_argument('--train_cfg', action='store_true', help='Also train on counterfactual images')
+    parser.add_argument('--cfg', action='store_true', help='Also train on counterfactual images')
     parser.add_argument('--cf_data', type=str, help='Path to the counterfactual dataset.')
     parser.add_argument('--name', default='', type=str, help='name of the experiment')
     parser.add_argument('--cf_ratio', default=1.0, type=float, help='Ratio of CF/Real data')
