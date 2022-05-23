@@ -78,6 +78,8 @@ if __name__ == "__main__":
                         help='Where to place the dataset')
     parser.add_argument('--truncation', type=float, default=1.0,
                         help='Truncation value for the sampling the noise')
+    parser.add_argument("--workers", type=int,
+                        help="Number data loading workers, default = 6")
 
     args = parser.parse_args()
     main(args)
