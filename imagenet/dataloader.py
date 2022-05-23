@@ -368,8 +368,8 @@ def get_cf_imagenet_dls(path, cf_ratio, len_dl_train, distributed, batch_size, w
     n_data = cf_batch_sz * len_dl_train
 
     # dataset
-    cf_train_dataset = ImagenetCounterfactual(path, train=True, n_data=n_data)
-    cf_val_dataset = ImagenetCounterfactual(path, train=False)
+    cf_train_dataset = ImagenetCounterfactual(path, train=True, n_data=n_data, mode='x_gen')
+    cf_val_dataset = ImagenetCounterfactual(path, train=False, mode='x_gen')
 
     # sampler
     cf_train_sampler = DistributedSampler(cf_train_dataset) if distributed else None
