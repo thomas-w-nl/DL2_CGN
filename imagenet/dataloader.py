@@ -200,7 +200,7 @@ class ImagenetCounterfactual(Dataset):
 
     @staticmethod
     def get_data(p, train , mode):
-        subdirs = glob(p + '/train*') if train else glob(p + '/val*')
+        subdirs = glob.glob(p + '/train*') if train else glob.glob(p + '/val*')
 
         dfs = []
         for sub in subdirs:
