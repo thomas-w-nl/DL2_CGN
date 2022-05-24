@@ -110,18 +110,19 @@ def transform_labels(x):
 
 class ImagenetVanilla(Dataset) :
 
-    def __init__(self, train=True):
+    def __init__(self, root_path, train=True):
         super(ImagenetVanilla, self).__init__()
-        root = join('.', 'imagenet', 'data')
+        # root = join('.', 'imagenet', 'data')
+        root = root_path
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])
 
         # Transforms
         if train:
-            ims_path = join(root, 'imagenet', 'train')
+            ims_path = join(root, 'train')
             t_list = [transforms.RandomResizedCrop(224), transforms.RandomHorizontalFlip()]
         else:
-            ims_path = join(root, 'imagenet', 'val')
+            ims_path = join(root, 'val')
             t_list = [transforms.Resize(256), transforms.CenterCrop(224)]
 
         t_list += [transforms.ToTensor(), normalize]
@@ -137,9 +138,9 @@ class ImagenetVanilla(Dataset) :
     @staticmethod
     def get_data(p):
         ims, labels = [], []
-        subdirs = sorted(glob(p + '/*'))
+        subdirs = sorted(glob.glob(p + '/*'))
         for i, sub in enumerate(subdirs):
-            im = sorted(glob(sub + '/*'))
+            im = sorted(glob.glob(sub + '/*'))
             l = np.ones(len(im))*i
             ims.append(im), labels.append(l)
         return np.concatenate(ims), np.concatenate(labels)
@@ -199,7 +200,7 @@ class ImagenetCounterfactual(Dataset):
 
     @staticmethod
     def get_data(p, train , mode):
-        subdirs = glob(p + '/train*') if train else glob(p + '/val*')
+        subdirs = glob.glob(p + '/train*') if train else glob.glob(p + '/val*')
 
         dfs = []
         for sub in subdirs:
@@ -258,9 +259,9 @@ class CueConflict(Dataset):
     @staticmethod
     def make_df(path):
         # get the image paths
-        subdirs = glob(path + '*')
+        subdirs = glob.glob(path + '*')
         ims = []
-        for sub in subdirs: ims += glob(sub + '/*')
+        for sub in subdirs: ims += glob.glob(sub + '/*')
 
         # get the labels
         def first_label(l): return l[:re.search("\d+-",l).start()]
@@ -343,10 +344,10 @@ class RefinementDataset(Dataset) :
 
 # dataloaders
 
-def get_imagenet_dls(distributed, batch_size, workers):
+def get_imagenet_dls(distributed, batch_size, workers, data_root_path):
     # dataset
-    train_dataset = ImagenetVanilla(train=True)
-    val_dataset = ImagenetVanilla(train=False)
+    train_dataset = ImagenetVanilla(data_root_path, train=True)
+    val_dataset = ImagenetVanilla(data_root_path, train=False)
 
     # sampler
     train_sampler = DistributedSampler(train_dataset) if distributed else None
@@ -367,8 +368,8 @@ def get_cf_imagenet_dls(path, cf_ratio, len_dl_train, distributed, batch_size, w
     n_data = cf_batch_sz * len_dl_train
 
     # dataset
-    cf_train_dataset = ImagenetCounterfactual(path, train=True, n_data=n_data)
-    cf_val_dataset = ImagenetCounterfactual(path, train=False)
+    cf_train_dataset = ImagenetCounterfactual(path, train=True, n_data=n_data, mode='x_gen')
+    cf_val_dataset = ImagenetCounterfactual(path, train=False, mode='x_gen')
 
     # sampler
     cf_train_sampler = DistributedSampler(cf_train_dataset) if distributed else None
