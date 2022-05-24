@@ -107,7 +107,8 @@ def eval(args):
     else:
         dataloader = get_imagenetA(args.batch_size, data_path, args.workers)
 
-    top1, top5 = [], []
+    top1_bg, top1_text, top1_shape = [], [], []
+    top5_bg, top5_text, top5_shape = [], [], []
 
     for batch in dataloader:
         image_batch = batch["ims"]
@@ -124,23 +125,26 @@ def eval(args):
 
         #avg_prec_score = sklearn.metrics.average_precision_score(label_batch.numpy(), preds.numpy())
 
-        # top1.append(acc1)
-        # top5.append(acc5)
-        # AUPR.append(avg_prec_score)
-        # print("          ", "top1", "top5")
-        # print("Shape     ", acc1_shape.item(), acc5_shape.item())
-        # print("Foreground", acc1_text.item(), acc5_text.item())
-        # print("Backgrond ", acc1_bg.item(), acc5_bg.item())
+        top1_shape.append(acc1_shape)
+        top1_text.append(acc1_text)
+        top1_bg.append(acc1_bg)
 
-    eval_dict["top1"] = np.mean(top1)
-    eval_dict["top5"] = np.mean(top5)
-    #eval_dict["AUPR"] = np.mean(AUPR)
+        top5_shape.append(acc5_shape)
+        top5_text.append(acc5_text)
+        top5_bg.append(acc5_bg)
 
-    print(args.model_name)
+    eval_dict["top1_bg"] = np.mean(top1_bg)
+    eval_dict["top1_text"] = np.mean(top1_text)
+    eval_dict["top1_shape"] = np.mean(top1_shape)
+
+    eval_dict["top5_bg"] = np.mean(top5_bg)
+    eval_dict["top5_text"] = np.mean(top5_text)
+    eval_dict["top5_shape"] = np.mean(top5_shape)
+
+
     print("--------------")
-    print(f"Top-1 Accuracy: {np.mean(top1)}")
-    print(f"Top-5 Accuracy: {np.mean(top5)}")
-    #print(f"AUPR-score: {np.mean(AUPR)}")
+    print("Top-1 Accuracy (Shape, Background, Texture): ", eval_dict["top1_shape"], eval_dict["top1_bg"], eval_dict["top1_text"])
+    print("Top-5 Accuracy (Shape, Background, Texture): ", eval_dict["top5_shape"], eval_dict["top5_bg"], eval_dict["top5_text"])
 
     return eval_dict
 
