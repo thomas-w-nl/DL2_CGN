@@ -67,6 +67,8 @@ def accuracyA(output, target, topk=(1,)):
 
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
+        torch.set_printoptions(linewidth=200)
+        print("pred", pred)
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
         res = []
@@ -86,6 +88,8 @@ def get_imagenetA(batch_size, data_root_path, workers):
     return loader
 
 def eval(args):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # device = "cpu"
     #model = torch.load(args.model_path)
 
     model = InvariantEnsemble(arch=args.model_name, pretrained=False, cut=1)
@@ -95,6 +99,7 @@ def eval(args):
     state_dict = {state_dict_key.replace("module.", ""):state_dict_value for state_dict_key, state_dict_value in state_dict.items()}
 
     model.load_state_dict(state_dict)
+    model.to(device)
 
     model.eval()
 
@@ -110,26 +115,34 @@ def eval(args):
     top1_bg, top1_text, top1_shape = [], [], []
     top5_bg, top5_text, top5_shape = [], [], []
 
-    for batch in tqdm(dataloader):
-        image_batch = batch["ims"]
+    for i, batch in enumerate(tqdm(dataloader)):
+        image_batch = batch["ims"].to(device)
         label_batch = batch["labels"]
 
-        preds = model(image_batch)
+        print("labels", label_batch)
+
+        with torch.no_grad():
+            preds = model(image_batch)
 
 
-        acc1_shape, acc5_shape = accuracyA(preds['shape_preds'], label_batch, topk=(1, 5))
-        acc1_text, acc5_text = accuracyA(preds['texture_preds'], label_batch, topk=(1, 5))
-        acc1_bg, acc5_bg = accuracyA(preds['bg_preds'], label_batch, topk=(1, 5))
+
+        acc1_shape, acc5_shape = accuracyA(preds['shape_preds'].cpu(), label_batch, topk=(1, 5))
+        acc1_text, acc5_text = accuracyA(preds['texture_preds'].cpu(), label_batch, topk=(1, 5))
+        acc1_bg, acc5_bg = accuracyA(preds['bg_preds'].cpu(), label_batch, topk=(1, 5))
 
         #avg_prec_score = sklearn.metrics.average_precision_score(label_batch.numpy(), preds.numpy())
 
-        top1_shape.append(acc1_shape)
-        top1_text.append(acc1_text)
-        top1_bg.append(acc1_bg)
+        top1_shape.append(acc1_shape.item())
+        top1_text.append(acc1_text.item())
+        top1_bg.append(acc1_bg.item())
 
-        top5_shape.append(acc5_shape)
-        top5_text.append(acc5_text)
-        top5_bg.append(acc5_bg)
+        top5_shape.append(acc5_shape.item())
+        top5_text.append(acc5_text.item())
+        top5_bg.append(acc5_bg.item())
+
+        if i == 10:
+            break
+        # break
 
     eval_dict["top1_bg"] = np.mean(top1_bg)
     eval_dict["top1_text"] = np.mean(top1_text)
