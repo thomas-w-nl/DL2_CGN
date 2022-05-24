@@ -337,7 +337,7 @@ def train(train_loader, cf_train_loader, model, criterion, optimizer, epoch, arg
 
 def validate(model, val_loader, cf_val_loader, dl_shape_bias, dls_in9, args):
     real_accs = validate_imagenet(val_loader, model, args)
-    if cf_val_loader[0] is not None:
+    if isinstance(cf_val_loader, DataLoader) is not None:
         cf_accs = validate_counterfactual(cf_val_loader, model, args)
     else:
         cf_accs = {'cfg': 0}
