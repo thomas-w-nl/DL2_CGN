@@ -11,6 +11,7 @@ from models.classifier_ensemble import InvariantEnsemble
 from dataloader import get_imagenet_dls
 import glob
 from PIL import Image
+from tqdm import tqdm
 
 def transform_labels(x):
     return torch.tensor(x).to(torch.int64)
@@ -66,7 +67,6 @@ def accuracyA(output, target, topk=(1,)):
 
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
-        print(pred)
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
         res = []
@@ -110,11 +110,9 @@ def eval(args):
     top1_bg, top1_text, top1_shape = [], [], []
     top5_bg, top5_text, top5_shape = [], [], []
 
-    for batch in dataloader:
+    for batch in tqdm(dataloader):
         image_batch = batch["ims"]
         label_batch = batch["labels"]
-
-        print(label_batch)
 
         preds = model(image_batch)
 
