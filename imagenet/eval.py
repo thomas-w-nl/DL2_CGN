@@ -107,7 +107,7 @@ def eval(args):
     else:
         dataloader = get_imagenetA(args.batch_size, data_path, args.workers)
 
-    top1, top5, AUPR = [], [], []
+    top1, top5 = [], []
 
     for batch in dataloader:
         image_batch = batch["ims"]
@@ -134,13 +134,13 @@ def eval(args):
 
     eval_dict["top1"] = np.mean(top1)
     eval_dict["top5"] = np.mean(top5)
-    eval_dict["AUPR"] = np.mean(AUPR)
+    #eval_dict["AUPR"] = np.mean(AUPR)
 
     print(args.model_name)
     print("--------------")
     print(f"Top-1 Accuracy: {np.mean(top1)}")
     print(f"Top-5 Accuracy: {np.mean(top5)}")
-    print(f"AUPR-score: {np.mean(AUPR)}")
+    #print(f"AUPR-score: {np.mean(AUPR)}")
 
     return eval_dict
 
