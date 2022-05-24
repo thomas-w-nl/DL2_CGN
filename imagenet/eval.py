@@ -100,7 +100,7 @@ def eval(args):
 
     eval_dict = dict()
 
-    data_path = "../"*4 + args.dataset
+    data_path = args.dataset
 
     if args.data_name == "imagenet":
         _, dataloader, _ = get_imagenet_dls(False, args.batch_size, args.workers, data_path)
@@ -127,10 +127,10 @@ def eval(args):
         # top1.append(acc1)
         # top5.append(acc5)
         # AUPR.append(avg_prec_score)
-        print(acc1_shape.item(), acc5_shape.item())
-        print(acc1_text.item(), acc5_text.item())
-        print(acc1_bg.item(), acc5_bg.item())
-        break
+        # print("          ", "top1", "top5")
+        # print("Shape     ", acc1_shape.item(), acc5_shape.item())
+        # print("Foreground", acc1_text.item(), acc5_text.item())
+        # print("Backgrond ", acc1_bg.item(), acc5_bg.item())
 
     eval_dict["top1"] = np.mean(top1)
     eval_dict["top5"] = np.mean(top5)
