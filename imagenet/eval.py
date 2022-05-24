@@ -142,7 +142,7 @@ def eval(args):
     eval_dict["top5_shape"] = np.mean(top5_shape)
 
 
-    print("--------------")
+    print("---------------")
     print("Top-1 Accuracy (Shape, Background, Texture): ", eval_dict["top1_shape"], eval_dict["top1_bg"], eval_dict["top1_text"])
     print("Top-5 Accuracy (Shape, Background, Texture): ", eval_dict["top5_shape"], eval_dict["top5_bg"], eval_dict["top5_text"])
 
