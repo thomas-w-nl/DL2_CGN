@@ -165,17 +165,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval(args)
-
-    models = {
-        "INS2_1": "classifier_2022_05_22_23_22_classifier_INS2_LR_START_0_001",
-        "INS2_2": "classifier_2022_05_23_09_39_classifier_INS2_LR_START_0_001_seed_2",
-        "INS2+CFG_1": "classifier_2022_05_23_14_22_classifier_INS2_CFG_LR_START_0_001_seed_1",
-        "INS2+CFG_2": "classifier_2022_05_23_19_18_classifier_INS2_CFG_LR_START_0_001_seed_2",
-        "INS2+REAL_CFG_1": "classifier_2022_05_23_22_57_classifier_INS2_CFG_REALISTIC_LR_START_0_001_seed_1",
-     }
-
-    for name, model in models.items():
-        args.model_path = f"imagenet/experiments/{model}/model_best.pth"
-        print("====>", name)
-        eval(args)
-        print("")
