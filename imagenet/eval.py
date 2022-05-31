@@ -68,7 +68,6 @@ def accuracyA(output, target, topk=(1,)):
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
         torch.set_printoptions(linewidth=200)
-        print("pred", pred)
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
         res = []
@@ -112,57 +111,45 @@ def eval(args):
     else:
         dataloader = get_imagenetA(args.batch_size, data_path, args.workers)
 
-    top1_bg, top1_text, top1_shape = [], [], []
-    top5_bg, top5_text, top5_shape = [], [], []
+    top1 = []
+    top5 = []
 
-    for i, batch in enumerate(tqdm(dataloader)):
+    for i, batch in enumerate(dataloader):
         image_batch = batch["ims"].to(device)
         label_batch = batch["labels"]
 
-        print("labels", label_batch)
 
         with torch.no_grad():
             preds = model(image_batch)
+            pred_ensemble = (preds['shape_preds'] + preds['texture_preds']).cpu()
 
 
 
-        acc1_shape, acc5_shape = accuracyA(preds['shape_preds'].cpu(), label_batch, topk=(1, 5))
-        acc1_text, acc5_text = accuracyA(preds['texture_preds'].cpu(), label_batch, topk=(1, 5))
-        acc1_bg, acc5_bg = accuracyA(preds['bg_preds'].cpu(), label_batch, topk=(1, 5))
+        acc1, acc5 = accuracyA(pred_ensemble, label_batch, topk=(1, 5))
+        # acc1_text, acc5_text = accuracyA(preds['texture_preds'].cpu(), label_batch, topk=(1, 5))
+        # acc1_bg, acc5_bg = accuracyA(preds['bg_preds'].cpu(), label_batch, topk=(1, 5))
 
         #avg_prec_score = sklearn.metrics.average_precision_score(label_batch.numpy(), preds.numpy())
 
-        top1_shape.append(acc1_shape.item())
-        top1_text.append(acc1_text.item())
-        top1_bg.append(acc1_bg.item())
+        top1.append(acc1.item())
 
-        top5_shape.append(acc5_shape.item())
-        top5_text.append(acc5_text.item())
-        top5_bg.append(acc5_bg.item())
-
-        if i == 10:
-            break
-        # break
-
-    eval_dict["top1_bg"] = np.mean(top1_bg)
-    eval_dict["top1_text"] = np.mean(top1_text)
-    eval_dict["top1_shape"] = np.mean(top1_shape)
-
-    eval_dict["top5_bg"] = np.mean(top5_bg)
-    eval_dict["top5_text"] = np.mean(top5_text)
-    eval_dict["top5_shape"] = np.mean(top5_shape)
+        top5.append(acc5.item())
 
 
-    print("---------------")
-    print("Top-1 Accuracy (Shape, Background, Texture): ", eval_dict["top1_shape"], eval_dict["top1_bg"], eval_dict["top1_text"])
-    print("Top-5 Accuracy (Shape, Background, Texture): ", eval_dict["top5_shape"], eval_dict["top5_bg"], eval_dict["top5_text"])
+    eval_dict["top1"] = np.mean(top1)
+
+    eval_dict["top5"] = np.mean(top5)
+
+
+    print(f"Top-1 Accuracy: {eval_dict['top1']:3.3f}")
+    print(f"Top-5 Accuracy: {eval_dict['top5']:3.3f}")
 
     return eval_dict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dataset", type=str, default="storage/twiggers/imagenet-a",
+    parser.add_argument("--dataset", type=str, default="/storage/twiggers/imagenet-a",
                         help="Path(s) to the dataset(s)")
     parser.add_argument("--data_name", type=str, default="imagenetA")
     parser.add_argument("--model_name", type=str, default="resnet50",
@@ -178,3 +165,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval(args)
+
+    models = {
+        "INS2_1": "classifier_2022_05_22_23_22_classifier_INS2_LR_START_0_001",
+        "INS2_2": "classifier_2022_05_23_09_39_classifier_INS2_LR_START_0_001_seed_2",
+        "INS2+CFG_1": "classifier_2022_05_23_14_22_classifier_INS2_CFG_LR_START_0_001_seed_1",
+        "INS2+CFG_2": "classifier_2022_05_23_19_18_classifier_INS2_CFG_LR_START_0_001_seed_2",
+        "INS2+REAL_CFG_1": "classifier_2022_05_23_22_57_classifier_INS2_CFG_REALISTIC_LR_START_0_001_seed_1",
+     }
+
+    for name, model in models.items():
+        args.model_path = f"imagenet/experiments/{model}/model_best.pth"
+        print("====>", name)
+        eval(args)
+        print("")
