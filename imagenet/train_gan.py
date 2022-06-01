@@ -108,7 +108,8 @@ def main(args):
 
 
     # Setup training utilities
-    discriminator_optimizer = torch.optim.Adam(model_d.parameters(), lr=args.lr, betas=(.5, 0.999))
+    # discriminator_optimizer = torch.optim.Adam(model_d.parameters(), lr=args.lr * 0.1, betas=(.5, 0.999))
+    discriminator_optimizer = torch.optim.SGD(model_d.parameters(), lr=args.lr * .2)
     generator_optimizer = torch.optim.Adam(model_g.parameters(), lr=args.lr, betas=(.5, 0.999))
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(discriminator_optimizer, milestones=args.reduce_lr_on, gamma=0.1)
@@ -192,7 +193,7 @@ def main(args):
             #     discriminator_optimizer.step()
 
             loss_total_discriminator.append(loss_real.cpu().item())
-            accuracy_real = torch.sum((torch.sigmoid(pred) > .5)).detach().cpu() / len(labels_real)
+            accuracy_real = torch.sum((torch.sigmoid(pred) >= .5)).detach().cpu() / len(labels_real)
             total_accuracy.append(accuracy_real)
 
             pred = model_d(images_fake).squeeze(1)
@@ -201,8 +202,8 @@ def main(args):
 
 
             # only optimize discriminator if it is not too good
-            if last_total_accuracy < .8:
-                discriminator_optimizer.step()
+            # if last_total_accuracy < .8:
+            discriminator_optimizer.step()
 
 
             loss_total_discriminator.append(loss_fake.cpu().item())
@@ -230,6 +231,10 @@ def main(args):
         # lr = scheduler.get_last_lr()
         lr = discriminator_optimizer.param_groups[0]['lr']
         scheduler.step()
+
+        print("Accuracies")
+        print("real", accuracy_real)
+        print("fake", accuracy_fake)
 
         loss_generator = np.mean(loss_total_generator)
         loss_discriminator = np.mean(loss_total_discriminator)
