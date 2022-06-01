@@ -205,7 +205,7 @@ class ImagenetCounterfactual(Dataset):
         dfs = []
         for sub in subdirs:
             df = pd.read_csv(join(sub, 'labels.csv'), index_col=0)
-            df['abs_path'] = sub + '/ims/' + df['im_name'] + f"_{mode}.jpg"
+            df['abs_path'] = sub + '/ims/' + df['im_name'] + f"{mode}.png"
             dfs.append(df)
 
         return pd.concat(dfs)
@@ -368,8 +368,8 @@ def get_cf_imagenet_dls(path, cf_ratio, len_dl_train, distributed, batch_size, w
     n_data = cf_batch_sz * len_dl_train
 
     # dataset
-    cf_train_dataset = ImagenetCounterfactual(path, train=True, n_data=n_data, mode='x_gen')
-    cf_val_dataset = ImagenetCounterfactual(path, train=False, mode='x_gen')
+    cf_train_dataset = ImagenetCounterfactual(path, train=True, n_data=n_data, mode='')
+    cf_val_dataset = ImagenetCounterfactual(path, train=False, mode='')
 
     # sampler
     cf_train_sampler = DistributedSampler(cf_train_dataset) if distributed else None
